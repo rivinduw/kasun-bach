@@ -1,117 +1,89 @@
 import { DurableObject } from 'cloudflare:workers';
+import { createGame, parseGame, remainingSeconds } from '../../src/game.ts';
+import { applyMove } from '../../src/roomEdits.ts';
 
 const GAME_KEY = 'shared-game-v1';
-const ROSTER = ['Kavindu', 'Rivindu', 'Elijah', 'Dane', 'Sachira'];
-
-function initialState() {
-  return {
-    version: 1,
-    screen: 'landing',
-    groom: 'Kasun',
-    bride: 'Imesha',
-    friends: ROSTER,
-    arbiter: '',
-    city: 'Colombo',
-    eventDate: '26 November 2026',
-    spendingLimit: '',
-    startedAt: null,
-    step: 0,
-    rank: 2,
-    viewingStep: null,
-    statuses: Array(6).fill(null),
-    opened: false,
-    powerUsed: [],
-    undoStack: [],
-    fastTracked: false,
-    sharks: [],
-    iqQuestions: [],
-    iqScores: [],
-    iqIndex: 0,
-    rapDifficulty: 'Medium',
-    rapWords: [],
-    rapPrepared: false,
-    queenConsent: false,
-    queenMessageSent: false,
-    queenRatings: Array(6).fill(0),
-    queenFeedback: '',
-    queenVerdict: '',
-    zugzwangChoice: '',
-    clock: { label: '', duration: 0, remaining: 0, startedAt: null },
-    selectedPiece: '',
-    rewardNote: '',
-    mission: 'Naturally use the word zugzwang in conversation with another participating friend.',
-    bishopAssignments: ['Zugzwang', 'En Passant', 'Gambit', 'Underpromotion', 'Stalemate'],
-  };
-}
-
-function validGame(state) {
-  return state && state.version === 1 && Array.isArray(state.statuses) && state.statuses.length === 6
-    && Number.isInteger(state.step) && state.step >= 0 && state.step <= 6
-    && Number.isInteger(state.rank) && state.rank === state.step + 2
-    && ['landing', 'welcome', 'preparation', 'game', 'promotion', 'reward'].includes(state.screen)
-    && Array.isArray(state.powerUsed);
-}
-
-function lockRoster(state) {
-  return { ...state, groom: 'Kasun', bride: 'Imesha', friends: ROSTER };
-}
 
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
     if (url.pathname === '/health') return Response.json({ ok: true, room: 'kasun-bachelor-party' });
     if (url.pathname !== '/room') return new Response('Not found', { status: 404 });
-    const id = env.ROOM.idFromName('kasun-bachelor-party-single-room');
-    return env.ROOM.get(id).fetch(request);
+    return env.ROOM.get(env.ROOM.idFromName('kasun-bachelor-party-single-room')).fetch(request);
   },
 };
 
 export class SharedGameRoom extends DurableObject {
-  async getRecord() {
-    let record = await this.ctx.storage.get(GAME_KEY);
-    if (!record) {
-      record = { state: initialState(), revision: 0 };
-      await this.ctx.storage.put(GAME_KEY, record);
-    }
-    return record;
+  constructor(ctx, env) {
+    super(ctx, env);
+    ctx.blockConcurrencyWhile(async () => {
+      this.record = await ctx.storage.get(GAME_KEY);
+      if (this.record?.openingEdition === 1) return;
+      const state = this.record ? parseGame(JSON.stringify(this.record.state)) : createGame();
+      // One-time rollout for tonight's first, still unresolved envelope.
+      if (state.step === 0 && state.statuses.every(status => status === null)) {
+        state.screen = 'landing';
+        state.rank = 1;
+        state.viewingStep = null;
+        state.clock = { ...state.clock, remaining: remainingSeconds(state.clock), startedAt: null };
+      }
+      this.record = { state, revision: (this.record?.revision || 0) + 1, generation: 1, openingEdition: 1 };
+      await ctx.storage.put(GAME_KEY, this.record);
+    });
   }
 
-  async broadcast() {
-    const record = await this.getRecord();
-    const message = JSON.stringify({ type: 'snapshot', state: record.state, revision: record.revision, connections: this.ctx.getWebSockets().length });
+  snapshot(socket, receipt = {}) {
+    const { state, revision, generation } = this.record;
+    const legacy = !this.ctx.getTags(socket).includes('v2');
+    const visible = legacy && state.rank === 1 ? { ...state, rank: 2 } : state;
+    socket.send(JSON.stringify({
+      type: 'snapshot', state: visible, revision, generation,
+      connections: this.ctx.getWebSockets().length, ...receipt,
+    }));
+  }
+
+  broadcast(sender, receipt) {
     for (const socket of this.ctx.getWebSockets()) {
-      try { socket.send(message); } catch { /* Closed sockets are removed by the runtime. */ }
+      try { this.snapshot(socket, socket === sender ? receipt : {}); } catch { /* Closed peer. */ }
     }
   }
 
   async fetch(request) {
-    if (request.headers.get('Upgrade') !== 'websocket') return new Response('WebSocket upgrade required', { status: 426 });
-    const pair = new WebSocketPair();
-    const client = pair[0];
-    const server = pair[1];
-    this.ctx.acceptWebSocket(server);
-    await this.getRecord();
-    await this.broadcast();
+    if (request.headers.get('Upgrade')?.toLowerCase() !== 'websocket') return new Response('WebSocket upgrade required', { status: 426 });
+    const [client, server] = Object.values(new WebSocketPair());
+    const modern = new URL(request.url).searchParams.get('v') === '2';
+    this.ctx.acceptWebSocket(server, [modern ? 'v2' : 'legacy']);
+    this.broadcast();
     return new Response(null, { status: 101, webSocket: client });
   }
 
-  async webSocketMessage(_socket, message) {
-    let update;
-    try { update = JSON.parse(typeof message === 'string' ? message : new TextDecoder().decode(message)); }
-    catch { return; }
-    if (!['update', 'bootstrap'].includes(update?.type) || !validGame(update.state)) return;
-    const record = await this.getRecord();
-    if (update.type === 'bootstrap' && record.revision !== 0) {
-      await this.broadcast();
-      return;
-    }
-    const state = lockRoster(update.state);
-    record.state = state;
-    record.revision += 1;
-    await this.ctx.storage.put(GAME_KEY, record);
-    await this.broadcast();
+  async webSocketMessage(socket, raw) {
+    if (typeof raw !== 'string' || raw.length > 256000) return;
+    // Older tabs receive the current board until refreshed. They cannot restore a pre-reset save.
+    if (!this.ctx.getTags(socket).includes('v2')) { this.snapshot(socket); return; }
+    let msg;
+    try { msg = JSON.parse(raw); } catch { return; }
+    const record = this.record;
+    const reject = () => this.snapshot(socket, { rejected: msg.id });
+    if (msg.generation !== record.generation) return reject();
+    let state;
+    if (msg.type === 'reset' && msg.revision === record.revision) {
+      state = createGame();
+    } else if (msg.type === 'move') {
+      try {
+        const next = applyMove(record.state, msg.move);
+        if (!next) return reject();
+        state = parseGame(JSON.stringify(next));
+      } catch { return reject(); }
+    } else return reject();
+    this.record = { ...record, state, revision: record.revision + 1, generation: record.generation + Number(msg.type === 'reset') };
+    await this.ctx.storage.put(GAME_KEY, this.record);
+    this.broadcast(socket, { accepted: msg.id });
   }
 
-  async webSocketClose() { await this.broadcast(); }
-  async webSocketError() { await this.broadcast(); }
+  webSocketClose(socket, code, reason) {
+    try { socket.close(code === 1005 || code === 1006 ? 1000 : code, reason); } catch { /* Already closed. */ }
+    this.broadcast();
+  }
+  webSocketError(socket) { try { socket.close(1011, 'Reconnect'); } catch { /* Already closed. */ } }
 }

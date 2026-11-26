@@ -8,7 +8,7 @@ A mobile-first chess-themed bachelor-party game for Kasun and Imesha. One shared
 - Bride: Imesha
 - Group: Kavindu, Rivindu, Elijah, Dane, and Sachira
 
-The roster is fixed in the app and shared room. The game does not create separate rooms or offer a restart control.
+The roster is fixed in the app and shared room. The game does not create separate rooms for individual phones.
 
 ## Run locally
 
@@ -38,7 +38,9 @@ Pages builds deploy the frontend when a commit reaches `main`.
 
 ## Game flow
 
-Kasun starts on rank 2, receives four one-use power cards, opens six challenge envelopes, and may promote to a Queen, Rook, Bishop, or Knight at rank 8. The vertical rank journey shows the shared position. Completed envelopes can be reviewed, and deferred envelopes remain available without moving progress backward.
+Kasun starts on rank 1 with an invitation, an introduction and four power cards. He moves to rank 2 to open the first of six challenge envelopes, and may promote to a Queen, Rook, Bishop, or Knight at rank 8. The vertical rank journey shows the shared position. Completed envelopes can be reviewed, and deferred envelopes remain available without moving progress backward.
+
+Reset shared game in the Arbiter panel asks for confirmation, then clears the room for every phone and returns Kasun to rank 1.
 
 The Arbiter panel has shared progression, recovery, timer, and reward controls. Undo restores the prior promotion and power-card state. Shark questions and Bishop assignments stay consistent across devices. Marriage IQ starts a fresh clock for each scenario.
 

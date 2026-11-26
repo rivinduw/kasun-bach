@@ -1,15 +1,27 @@
 import { describe, expect, it } from 'vitest';
 import {
-  BRUTAL_WORDS, CHALLENGES, consumePower, createGame, drawUnique, fastTrack,
+  advanceOpening, BRUTAL_WORDS, CHALLENGES, consumePower, createGame, drawUnique, fastTrack,
   IQ_QUESTIONS, marriageIqPercent, parseGame, POWER_CARDS, RAP_WORDS,
   remainingSeconds, rerollRapWords, resolveCurrent, restorePower, scoreIqAnswer, selectPromotion,
   serializeGame, voteResult,
 } from '../src/game';
 
+function atFirstEnvelope() {
+  return advanceOpening(advanceOpening(advanceOpening(createGame())));
+}
+
 describe('game setup and progression', () => {
-  it('starts at rank 2 with all four power cards available', () => {
+  it('starts at rank one and advances only after the briefing', () => {
     const game = createGame();
-    expect(game.rank).toBe(2);
+    expect(game.rank).toBe(1);
+    expect(resolveCurrent(game, 'completed')).toBe(game);
+    const welcome = advanceOpening(game);
+    const preparation = advanceOpening(welcome);
+    expect(welcome).toMatchObject({ rank: 1, screen: 'welcome' });
+    expect(preparation).toMatchObject({ rank: 1, screen: 'preparation' });
+    expect(atFirstEnvelope()).toMatchObject({ rank: 2, step: 0, screen: 'game' });
+    expect(parseGame(serializeGame({ ...welcome, rank: 2 })).rank).toBe(1);
+    expect(parseGame(serializeGame(atFirstEnvelope())).rank).toBe(2);
     expect(game.powerUsed).toEqual([]);
     expect(POWER_CARDS).toHaveLength(4);
   });
@@ -22,7 +34,7 @@ describe('game setup and progression', () => {
   });
 
   it('advances one rank for a resolution and rejects duplicate progression', () => {
-    const first = resolveCurrent(createGame(), 'completed');
+    const first = resolveCurrent(atFirstEnvelope(), 'completed');
     expect(first.rank).toBe(3);
     expect(first.step).toBe(1);
     expect(resolveCurrent(first, 'completed', 0)).toBe(first);
@@ -31,7 +43,7 @@ describe('game setup and progression', () => {
   });
 
   it('persists and restores a valid game state', () => {
-    const game = { ...resolveCurrent(createGame(), 'modified'), groom: 'Test Groom', selectedPiece: '', screen: 'game' as const };
+    const game = { ...resolveCurrent(atFirstEnvelope(), 'modified'), groom: 'Test Groom', selectedPiece: '', screen: 'game' as const };
     expect(parseGame(serializeGame(game))).toMatchObject({ rank: 3, groom: 'Test Groom', statuses: ['modified', null, null, null, null, null] });
     expect(() => parseGame('{"version":99}')).toThrow();
   });
@@ -45,7 +57,7 @@ describe('game setup and progression', () => {
   });
 
   it('reaches rank 8 after six resolutions and keeps skipped status distinct', () => {
-    let game = createGame();
+    let game = atFirstEnvelope();
     for (let i = 0; i < 5; i += 1) game = resolveCurrent(game, 'completed');
     game = resolveCurrent(game, 'skipped');
     expect(game.rank).toBe(8);
@@ -91,7 +103,7 @@ describe('challenge tools', () => {
   });
 
   it('defers the Queen’s verdict without double-advancing the pawn', () => {
-    let game = createGame();
+    let game = atFirstEnvelope();
     for (let i = 0; i < 4; i += 1) game = resolveCurrent(game, 'completed');
     game = resolveCurrent(game, 'deferred');
     expect(game.statuses[4]).toBe('deferred');
@@ -100,7 +112,7 @@ describe('challenge tools', () => {
   });
 
   it('fast-tracks unresolved challenges as deferred', () => {
-    let game = createGame();
+    let game = atFirstEnvelope();
     game = resolveCurrent(game, 'completed');
     game = fastTrack(game);
     expect(game.rank).toBe(8);
@@ -109,7 +121,7 @@ describe('challenge tools', () => {
   });
 
   it('lets the Arbiter complete a deferred envelope after promotion without advancing twice', () => {
-    let game = createGame();
+    let game = atFirstEnvelope();
     for (let i = 0; i < 4; i += 1) game = resolveCurrent(game, 'completed');
     game = resolveCurrent(game, 'deferred');
     game = resolveCurrent(game, 'completed');

@@ -546,3 +546,107 @@ select { appearance: none; padding-right: 2.3rem; background-image: linear-gradi
   body[data-print-target="certificate"] #certificate, body[data-print-target="certificate"] #certificate * { visibility: visible !important; }
   body[data-print-target="certificate"] #certificate { position: absolute; left: 0; top: 0; width: 100%; margin: 0; }
 }
+
+/* Stationery for the opening invitation and each of the six dispatches. */
+.invitation-page .landing { min-height: min(58vh, 520px); grid-template-columns: minmax(0, 1fr) minmax(0, .95fr); }
+.invitation-page .hero-copy { padding-block: 1rem; }
+.hero-copy .hero-deck { max-width: 23em; margin-bottom: 1.2rem; }
+.hero-copy .event-line { margin-bottom: .4rem; color: #d6cdb6; text-transform: uppercase; }
+.mail-button { position: relative; display: grid; justify-items: center; gap: 1.55rem; width: min(100%, 430px); margin: 1rem auto; padding: 0; border: 0; background: none; color: var(--chalk); cursor: pointer; }
+.mail-art { position: relative; display: block; width: 100%; aspect-ratio: 1.65; perspective: 1050px; isolation: isolate; transform: rotate(-3deg); transition: transform .25s ease; }
+.mail-button:not(.is-opening):hover .mail-art { transform: rotate(-1deg) translateY(-3px); }
+.mail-art > span:not(.mail-seal,.mail-address,.mail-stamp) { position: absolute; inset: 0; }
+.mail-back { border-radius: 4px; background: linear-gradient(140deg,#634a31,#a78e64 48%,#6f5436); box-shadow: 0 22px 30px -12px #040b08c9,0 4px 5px #09100d88; }
+.mail-letter { z-index: 1; inset: 4% 4% 3% !important; display: flex; flex-direction: column; align-items: flex-start; padding: 7% 9%; overflow: hidden; border: 1px solid #d4bd8d; border-radius: 2px; background: linear-gradient(115deg,#fcf5df,#e7ddbd); color: #342c21; text-align: left; }
+.mail-letter small { font: 700 clamp(.47rem,1.2vw,.65rem) var(--sans); letter-spacing: .19em; color: #724930; }
+.mail-letter strong { margin: .5em 0 .25em; font: italic clamp(1.35rem,4vw,2.3rem) var(--serif); }
+.mail-letter i { width: 83%; height: 25%; background: repeating-linear-gradient(to bottom,transparent 0 8px,#c4b68e 8px 9px); }
+.mail-pocket { z-index: 2; background: #b29b73; clip-path: polygon(0 0,50% 64%,100% 0,100% 100%,0 100%); }
+.mail-left { z-index: 2; clip-path: polygon(0 0,57% 61%,0 100%); background: linear-gradient(124deg,#eddfb9,#c8b183 64%,#ab926b); }
+.mail-right { z-index: 2; clip-path: polygon(100% 0,44% 60%,100% 100%); background: linear-gradient(245deg,#dccea6,#bd9e72); }
+.mail-front { z-index: 2; clip-path: polygon(0 100%,47% 44%,53% 44%,100% 100%); background: linear-gradient(165deg,#f8edcc,#ddc89c 76%,#ceba8f); }
+.mail-flap { transform-origin: 50% 0; z-index: 2; filter: drop-shadow(0 2px 1px #6c563a80); }
+.mail-flap span { display: block; height: 100%; clip-path: polygon(0 0,100% 0,54% 57%,51% 59%,49% 59%,46% 57%); background: linear-gradient(168deg,#eadbb3 2%,#f1e4c1 36%,#cbb58d 72%); }
+.mail-art::after { content: ''; position: absolute; z-index: 3; inset: 0; border-radius: 3px; pointer-events: none; opacity: .35; background: repeating-linear-gradient(102deg,#7a674512 0 1px,transparent 1px 4px),repeating-linear-gradient(4deg,#faf1d02e 0 1px,transparent 1px 3px); box-shadow: inset 0 0 0 1px #5b432c45; }
+.mail-seal { position: absolute; z-index: 5; left: 50%; top: 55%; width: 16%; aspect-ratio: 1; display: grid; place-items: center; transform: translate(-50%,-50%) rotate(-9deg); border: 2px solid #782f24; border-radius: 47% 52% 46% 53% / 49% 45% 54% 48%; color: #70251e; background: radial-gradient(ellipse at 30% 20%,#d78362,transparent 19%),radial-gradient(ellipse at 62% 70%,#853428,#ac5541 60%,#c97857 73%,#943c2e 85%); box-shadow: inset 1px 2px 2px #f2a78088,inset -3px -3px 4px #56241e80,1px 4px 5px #52382670; font: bold clamp(1.4rem,4vw,2.55rem) Georgia,serif; text-shadow: 0 1px 0 #e29774; line-height: 1; }
+.mail-seal::before { content: ''; position: absolute; inset: 11%; border: 1px solid #7a3329; border-radius: 48%; box-shadow: 0 1px 1px #e99c739c,inset 0 1px 1px #e99c739c; }
+.mail-address,.mail-stamp { position: absolute; z-index: 4; color: #654d33; }
+.mail-address { bottom: 11%; left: 9%; transform: rotate(-4deg); font: italic clamp(1.05rem,2.7vw,1.65rem) var(--serif); }
+.mail-stamp { right: 6%; bottom: 10%; padding: .35rem .45rem; transform: rotate(6deg); border: 1px solid #826746; outline: 1px solid #826746; outline-offset: 2px; font: 750 clamp(.42rem,1vw,.55rem)/1.4 var(--sans); letter-spacing: .13em; }
+.mail-action { display: inline-flex; align-items: center; justify-content: center; gap: 1.3rem; min-height: 46px; padding: .55rem 1.2rem; color: #231e13; background: #e5c580; border: 1px solid #f4dba3; border-radius: 3px; font-size: .87rem; font-weight: 750; }
+.mail-button:focus-visible { outline-offset: 10px; }
+.is-opening .mail-art { transform: translateY(6%) rotate(-1deg); transition-duration: .75s; }
+.is-opening .mail-seal { animation: lift-wax .41s ease-in forwards; }
+.is-opening .mail-flap { animation: fold-open .66s .20s ease-in-out forwards; }
+.is-opening .mail-letter { animation: lift-letter .65s .60s cubic-bezier(.19,.72,.27,1) forwards; }
+.is-opening .mail-action { opacity: .78; }
+@keyframes lift-wax { to { opacity: 0; transform: translate(-55%,-90%) rotate(-23deg) scale(1.15); } }
+@keyframes fold-open { 0% { transform: rotateX(0); z-index: 2; } 55% { z-index: 2; } 56% { z-index: 0; } 100% { transform: rotateX(124deg); z-index: 0; filter: brightness(.78); } }
+@keyframes lift-letter { to { transform: translateY(-34%) rotate(2deg); } }
+.letter-arrival { animation: page-in .32s ease-out; outline: none; }
+.opening-map { max-width: 640px; margin: 1.5rem auto 0; border-block: 1px solid var(--line); }
+.opening-map summary { display: flex; align-items: center; gap: .65rem; min-height: 51px; cursor: pointer; color: #ead7ad; font-weight: 650; list-style: none; }
+.opening-map summary::-webkit-details-marker { display: none; }
+.opening-map summary svg:last-child { margin-left: auto; }
+.opening-map[open] summary svg:last-child { transform: rotate(90deg); }
+.opening-map .rank-journey { width: 100%; margin-bottom: 1rem; }
+.dispatch { max-width: 760px; text-align: center; margin: .6rem auto; }
+.dispatch h1 { margin-inline: auto; max-width: 14em; font-size: clamp(2.15rem,5vw,4rem); }
+.dispatch > p { color: var(--paper-dim); font: italic 1.08rem var(--serif); }
+.dispatch .mail-button { margin: 3.1rem auto 1rem; }
+.rank-track { grid-template-columns: repeat(8,minmax(0,1fr)); }
+.rank-cell { justify-content: center; min-height: 36px; gap: .15em; }
+.rank-cell:disabled { cursor: default; }
+.progress-meta { gap: .8rem; font-size: .7rem; letter-spacing: .04em; color: #c2c8b9; }
+.journey-heading > span { color: #cfceb9; font-size: .75rem; }
+.journey-label strong { white-space: normal; overflow: visible; font-size: .9rem; }
+.journey-label small { font-size: .67rem; letter-spacing: .025em; }
+.intro-recap { padding: 1rem .4rem 0; font-size: .9rem; }
+.challenge-body { margin: 0; }
+.challenge-body .eyebrow,.challenge-body .block-label,.challenge-body .fine-print { color: #664c28; }
+.reward-page > .privacy-note,.reward-page > .privacy-note svg { color: #d3d5c7; }
+.upload-proxy input { display: block; }
+.reset-zone .danger-button { min-height: 44px; }
+.reset-zone strong { display: block; margin-block: .5rem; }
+@media (max-width: 680px) {
+  .invitation-page .landing { grid-template-columns: 1fr; gap: 1rem; min-height: 0; }
+  .invitation-page .hero-copy { padding: 0; }
+  .invitation-page h1 { font-size: clamp(3.1rem,12vw,4.5rem); margin: .65rem 0; }
+  .invitation-page .hero-deck { font-size: 1.16rem; margin: .75rem 0; }
+  .mail-button { width: min(91%,360px); margin-top: 1rem; }
+  .topbar { min-height: 56px; height: auto; }
+  .topbar .brand { width: auto; }
+  .topbar .top-actions { width: auto; flex-wrap: wrap; }
+  .topbar:has(.count-pill) .top-actions { width: 100%; justify-content: flex-start; }
+  .primary-button,.mail-action { letter-spacing: .04em; }
+  .challenge-body .rap-controls,.timer { flex-wrap: wrap; }
+  .room-status { flex-wrap: wrap; text-align: center; }
+  .progress-meta { font-size: .68rem; letter-spacing: .03em; }
+  .rank-cell { min-height: 35px; }
+  .resolution-actions,.resolution-actions .defer-button { grid-template-columns: repeat(2,minmax(0,1fr)); grid-column: auto; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .mail-art,.mail-seal,.mail-flap,.mail-letter,.letter-arrival { animation: none !important; transition: none !important; }
+}
+.introduction { display: grid; grid-template-columns: minmax(0,1.65fr) minmax(260px,1fr); align-items: start; gap: clamp(1.25rem,4vw,4.5rem); max-width: 1080px; margin-inline: auto; }
+.personal-letter { padding: clamp(1.25rem,4vw,3.6rem); background: radial-gradient(ellipse at top left,#fbf4df,#eae0c5); color: #352e24; border: 1px solid #cbb693; box-shadow: inset 0 0 0 6px #f1e8d2,inset 0 0 0 7px #cabb98,0 12px 30px #070e0b55; }
+.letterhead { display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid #ad9c77; margin-bottom: 1.5rem; padding-bottom: .6rem; color: #70552d; }
+.letterhead span:first-child { font: 2.1rem Georgia,serif; }
+.letterhead span:last-child { font-size: .63rem; line-height: 1.45; letter-spacing: .14em; font-weight: 750; text-align: right; }
+.personal-letter .eyebrow { color: #69512e; }
+.personal-letter h1 { max-width: 11em; font-size: clamp(2.35rem,5vw,4.5rem); }
+.personal-letter p,.letter-signatures { font: 1.12rem/1.55 var(--serif); max-width: 55ch; }
+.letter-signatures { display: grid; gap: .2rem; margin-top: 1.35rem; }
+.letter-signatures strong { color: #564022; font-weight: 600; }
+.intro-rules { padding: 1.5rem 0; }
+.intro-rules h2 { font-size: clamp(1.7rem,3vw,2.25rem); margin-bottom: .8rem; }
+.intro-rules ol { padding-left: 1.35rem; margin: 0 0 1.5rem; }
+.intro-rules li { padding: .6rem 0 .6rem .35rem; color: #d8d3c3; }
+.intro-rules li::marker { color: #ebcb89; }
+.intro-rules li strong { color: var(--chalk); }
+.footer a { color: #e8cea1; font-size: .76rem; letter-spacing: .02em; text-underline-offset: .2em; }
+@media(max-width:700px) {
+  .introduction { grid-template-columns: 1fr; }
+  .personal-letter p,.letter-signatures { font-size: 1.02rem; }
+  .intro-rules { padding: .2rem 0 1rem; }
+}

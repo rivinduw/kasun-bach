@@ -87,11 +87,9 @@ export const ZUGZWANG_CHOICES = [
 ];
 export const GAME_CONTENT = {
   welcome: [
-    'For years, you have moved freely across the board of bachelorhood, making questionable moves, committing spectacular blunders and occasionally mistaking luck for brilliance.',
-    'Tonight, your final match begins. You stand on the second rank. Six moves separate you from your destiny.',
-    'Along the way, you will face gambits, tactical traps, difficult calculations, discovered attacks and positions from which there is seemingly no escape.',
-    'Your friends are your judges, your opponents and, occasionally, your allies.',
-    'The Queen may intervene. Reach the eighth rank and you shall earn the honorary title of Grandmaster of Matrimony.',
+    'Tonight you enter the board as a pawn. Take your place on rank one with Kavindu, Rivindu, Elijah, Dane and Sachira. One of them will be your Chief Arbiter and open the envelopes with you.',
+    'On rank two you’ll make your pitch as Imesha’s future husband. Each of the six envelopes moves you up one rank. The group can complete a challenge, change it, skip it or save it for later.',
+    'At rank eight, choose your piece. Your reward stays sealed until you decide.',
   ],
   advertisement: {
     headline: 'You are about to launch the most important product of your life.',
@@ -155,12 +153,24 @@ export type GameState = {
 export function createGame(): GameState {
   return {
     version: 1, screen: 'landing', groom: GROOM, bride: BRIDE, friends: [...BROTHERHOOD], arbiter: '', city: 'Colombo', eventDate: '26 November 2026', spendingLimit: '',
-    startedAt: null, step: 0, rank: 2, viewingStep: null, statuses: Array(6).fill(null), opened: false, powerUsed: [], undoStack: [], fastTracked: false,
+    startedAt: null, step: 0, rank: 1, viewingStep: null, statuses: Array(6).fill(null), opened: false, powerUsed: [], undoStack: [], fastTracked: false,
     sharks: [], iqQuestions: [], iqScores: [], iqIndex: 0, rapDifficulty: 'Medium', rapWords: [], rapPrepared: false,
     queenConsent: false, queenMessageSent: false, queenRatings: Array(6).fill(0), queenFeedback: '', queenVerdict: '', zugzwangChoice: '',
     clock: { label: '', duration: 0, remaining: 0, startedAt: null }, selectedPiece: '', rewardNote: '',
     mission: WEDDING_MISSIONS[0], bishopAssignments: ['Zugzwang', 'En Passant', 'Gambit', 'Underpromotion', 'Stalemate'],
   };
+}
+
+const OPENING_SCREENS = ['landing', 'welcome', 'preparation'];
+
+export function advanceOpening(state: GameState): GameState {
+  if (state.rank !== 1) return state;
+  switch (state.screen) {
+    case 'landing': return { ...state, screen: 'welcome' };
+    case 'welcome': return { ...state, screen: 'preparation' };
+    case 'preparation': return { ...state, rank: 2, screen: 'game', startedAt: state.startedAt || new Date().toISOString() };
+    default: return state;
+  }
 }
 
 export function consumePower(state: GameState, id: string): GameState {
@@ -171,7 +181,7 @@ export function restorePower(state: GameState, id: string): GameState {
   return { ...state, powerUsed: state.powerUsed.filter((used) => used !== id) };
 }
 export function resolveCurrent(state: GameState, resolution: Resolution, expectedStep = state.step): GameState {
-  if (state.step >= 6 || state.step !== expectedStep || (state.statuses[state.step] && state.statuses[state.step] !== 'deferred')) return state;
+  if (state.rank === 1 || state.step >= 6 || state.step !== expectedStep || (state.statuses[state.step] && state.statuses[state.step] !== 'deferred')) return state;
   const replayingDeferred = state.statuses[state.step] === 'deferred';
   const statuses = [...state.statuses];
   statuses[state.step] = resolution;
@@ -194,7 +204,7 @@ export function resolveEnvelope(state: GameState, index: number, resolution: Res
   return { ...state, statuses, undoStack, viewingStep: null, screen: state.selectedPiece ? 'reward' : state.step === 6 ? 'promotion' : 'game', opened: false };
 }
 export function fastTrack(state: GameState): GameState {
-  if (state.step === 6 && state.rank === 8) return state;
+  if (state.rank === 1 || state.rank === 8) return state;
   const statuses = [...state.statuses];
   for (let i = 0; i < statuses.length; i += 1) if (!statuses[i]) statuses[i] = 'deferred';
   return { ...state, statuses, undoStack: [...state.undoStack, { step: state.step, rank: state.rank, statuses: [...state.statuses], screen: state.screen, selectedPiece: state.selectedPiece, powerUsed: [...state.powerUsed], clock: { ...state.clock } }], step: 6, rank: 8, viewingStep: null, screen: 'promotion', opened: false, fastTracked: true };
@@ -240,13 +250,22 @@ export function voteResult(votes: Array<'in' | 'out' | null>): 'deal' | 'no-deal
 export function serializeGame(state: GameState): string { return JSON.stringify(state, null, 2); }
 export function parseGame(raw: string): GameState {
   const parsed = JSON.parse(raw) as Partial<GameState>;
-  if (parsed.version !== 1 || !Array.isArray(parsed.statuses) || parsed.statuses.length !== 6 || typeof parsed.step !== 'number' || parsed.step < 0 || parsed.step > 6 || typeof parsed.rank !== 'number' || parsed.rank < 2 || parsed.rank > 8 || parsed.rank !== parsed.step + 2 || !Array.isArray(parsed.powerUsed) || (['promotion', 'reward'].includes(String(parsed.screen)) && parsed.rank !== 8)) throw new Error('This save file is invalid or uses an unsupported version.');
+  const opening = OPENING_SCREENS.includes(String(parsed.screen));
+  const step = parsed.step;
+  const rank = opening && step === 0 && parsed.rank === 2 ? 1 : parsed.rank;
+  const validStep = typeof step === 'number' && Number.isInteger(step) && step >= 0 && step <= 6;
+  const validPosition = opening ? step === 0 && rank === 1
+    : validStep && rank === step + 2 && ['game', 'promotion', 'reward'].includes(String(parsed.screen));
+  if (parsed.version !== 1 || !validPosition || !Array.isArray(parsed.statuses) || parsed.statuses.length !== 6
+    || !Array.isArray(parsed.powerUsed) || (['promotion', 'reward'].includes(String(parsed.screen)) && rank !== 8)) {
+    throw new Error('Invalid game position.');
+  }
   const base = createGame();
   const sharks = Array.isArray(parsed.sharks) ? parsed.sharks.map((shark) => ({ ...shark, questionIndex: Number.isInteger(shark.questionIndex) ? shark.questionIndex : 0 })) : base.sharks;
   const viewingStep = Number.isInteger(parsed.viewingStep) && Number(parsed.viewingStep) >= 0 && Number(parsed.viewingStep) < 6 ? Number(parsed.viewingStep) : null;
-  return { ...base, ...parsed, viewingStep, sharks, statuses: parsed.statuses as GameState['statuses'] } as GameState;
+  return { ...base, ...parsed, rank, viewingStep, sharks, statuses: parsed.statuses as GameState['statuses'] } as GameState;
 }
 export function remainingSeconds(clock: GameState['clock'], now = Date.now()): number {
   if (!clock.startedAt) return clock.remaining;
-  return Math.max(0, clock.remaining - Math.floor((now - clock.startedAt) / 1000));
+  return Math.max(0, clock.remaining - Math.max(0, Math.floor((now - clock.startedAt) / 1000)));
 }

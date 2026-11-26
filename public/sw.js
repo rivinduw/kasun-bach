@@ -1,4 +1,4 @@
-const CACHE = 'pawns-promotion-v2';
+const CACHE = 'pawns-promotion-v3';
 const SHELL = ['/', '/index.html', '/manifest.webmanifest', '/pawn.svg'];
 
 async function precacheBuiltAssets(cache) {
@@ -21,7 +21,7 @@ self.addEventListener('install', (event) => {
 
 self.addEventListener('activate', (event) => {
   event.waitUntil(caches.keys()
-    .then((keys) => Promise.all(keys.filter((key) => key !== CACHE).map((key) => caches.delete(key))))
+    .then((keys) => Promise.all(keys.filter((key) => key.startsWith('pawns-promotion-') && key !== CACHE).map((key) => caches.delete(key))))
     .then(() => self.clients.claim())
     .then(() => tellClients({ type: 'OFFLINE_READY' })));
 });
