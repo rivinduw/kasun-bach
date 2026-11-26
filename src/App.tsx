@@ -1,17 +1,19 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState, type RefObject } from 'react';
 import {
   Check, ChevronRight, Clipboard, Clock3, Download, ExternalLink,
-  FileDown, Flag, LockKeyhole, Menu, Pause, Play, RotateCcw, Share2, Shield,
-  SkipForward, Sparkles, Trophy, Unlock, X,
+  Compass, Flag, LockKeyhole, Menu, Pause, Play, RotateCcw, Share2, Shield,
+  SkipForward, Sparkles, Trophy, Unlock, X, Wifi, WifiOff,
 } from 'lucide-react';
 import {
-  BRUTAL_WORDS, CHALLENGES, createGame, drawUnique, fastTrack, IQ_QUESTIONS, GAME_CONTENT,
+  BRUTAL_WORDS, BRIDE, BROTHERHOOD, CHALLENGES, createGame, drawUnique, fastTrack, GROOM, IQ_QUESTIONS, GAME_CONTENT,
   marriageIqPercent, parseGame, POWER_CARDS, RAP_WORDS, remainingSeconds, rerollRapWords,
-  resolveCurrent, restorePower, scoreIqAnswer, selectPromotion, serializeGame, SHARK_ROLES, STORAGE_KEY,
+  resolveEnvelope, restorePower, scoreIqAnswer, selectPromotion, serializeGame, SHARK_ROLES, STORAGE_KEY,
   consumePower, undoProgress, voteResult, QUEEN_CATEGORIES, QUEEN_MESSAGE, VERDICTS,
   PIECES, REWARDS, WEDDING_MISSIONS, SECRET_TERMS, ZUGZWANG_CHOICES,
   type GameState, type Resolution,
 } from './game';
+
+const ROOM_URL = 'wss://kasun-bach-state.rivindu-w.workers.dev/room';
 
 function readSaved(): GameState {
   try {
@@ -20,38 +22,107 @@ function readSaved(): GameState {
   } catch { return createGame(); }
 }
 function safeText(value: string) { return value.replace(/[&<>"']/g, (char) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&apos;' })[char] || char); }
-function downloadSvg(title: string, lines: string[], filename: string) {
-  const textLines = lines.map((line, index) => `<text x="600" y="${285 + index * 52}" text-anchor="middle" class="line l${index}">${safeText(line)}</text>`).join('');
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="850" viewBox="0 0 1200 850"><title>${safeText(title)}</title><defs><pattern id="grid" width="100" height="100" patternUnits="userSpaceOnUse"><path d="M0 0h100v100H0z" fill="#f1eadb"/><path d="M0 0h50v50H0zM50 50h50v50H50z" fill="#e7dece"/></pattern></defs><style>.frame{fill:#f8f4eb;stroke:#17191c;stroke-width:3}.line{font:24px Georgia,serif;fill:#26272a}.l0{font:bold 16px Arial;letter-spacing:4px;fill:#c94736}.l1{font:bold 38px Georgia;letter-spacing:3px}.l2{font:italic 30px Georgia}.l3{font:20px Arial;fill:#666}.seal{font:64px Georgia;fill:#c94736}</style><rect width="1200" height="850" fill="#17191c"/><rect x="32" y="32" width="1136" height="786" fill="url(#grid)" stroke="#c94736" stroke-width="5"/><rect class="frame" x="58" y="58" width="1084" height="734"/><text x="600" y="150" text-anchor="middle" class="line l0">THE INTERNATIONAL BACHELOR FEDERATION</text><text x="600" y="220" text-anchor="middle" class="seal">♙</text>${textLines}<text x="600" y="735" text-anchor="middle" class="line l3">COLOMBO · 26 NOVEMBER 2026</text><text x="600" y="770" text-anchor="middle" class="line l3">ISSUED WITH HONOUR · REDEEMABLE WITH THE BROTHERHOOD</text></svg>`;
-  const anchor = document.createElement('a');
-  anchor.href = URL.createObjectURL(new Blob([svg], { type: 'image/svg+xml' })); anchor.download = filename; anchor.click();
-  URL.revokeObjectURL(anchor.href);
+function wrapLine(line: string, max = 66) {
+  const words = line.split(/\s+/); const rows: string[] = []; let row = '';
+  for (const word of words) { if (row && `${row} ${word}`.length > max) { rows.push(row); row = word; } else row = row ? `${row} ${word}` : word; }
+  if (row) rows.push(row);
+  return rows;
+}
+async function downloadPng(title: string, lines: string[], filename: string) {
+  const wrapped = lines.flatMap((line) => wrapLine(line));
+  const height = Math.max(900, 430 + wrapped.length * 38);
+  const text = wrapped.map((line, index) => `<text x="600" y="${315 + index * 38}" text-anchor="middle" class="copy">${safeText(line)}</text>`).join('');
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="${height}" viewBox="0 0 1200 ${height}"><defs><pattern id="grid" width="100" height="100" patternUnits="userSpaceOnUse"><path d="M0 0h100v100H0z" fill="#f1eadb"/><path d="M0 0h50v50H0zM50 50h50v50H50z" fill="#e7dece"/></pattern></defs><style>.title{font:bold 16px Arial;letter-spacing:4px;fill:#a9382b}.copy{font:24px Georgia,serif;fill:#26272a}.name{font:bold 38px Georgia;fill:#26272a}.seal{font:64px Georgia;fill:#c94736}</style><rect width="1200" height="${height}" fill="#17191c"/><rect x="32" y="32" width="1136" height="${height - 64}" fill="url(#grid)" stroke="#c94736" stroke-width="5"/><rect x="58" y="58" width="1084" height="${height - 116}" fill="#f8f4eb" stroke="#17191c" stroke-width="3"/><text x="600" y="145" text-anchor="middle" class="title">THE INTERNATIONAL BACHELOR FEDERATION</text><text x="600" y="232" text-anchor="middle" class="seal">♙</text><text x="600" y="285" text-anchor="middle" class="name">${safeText(title)}</text>${text}</svg>`;
+  const image = new Image();
+  const blob = new Blob([svg], { type: 'image/svg+xml' });
+  const objectUrl = URL.createObjectURL(blob);
+  try {
+    await new Promise<void>((resolve, reject) => { image.onload = () => resolve(); image.onerror = () => reject(new Error('Could not render image')); image.src = objectUrl; });
+    const canvas = document.createElement('canvas'); canvas.width = 1200; canvas.height = height;
+    const context = canvas.getContext('2d'); if (!context) throw new Error('Canvas is unavailable');
+    context.drawImage(image, 0, 0);
+    const png = await new Promise<Blob>((resolve, reject) => canvas.toBlob((value) => value ? resolve(value) : reject(new Error('Could not create PNG')), 'image/png'));
+    const anchor = document.createElement('a'); const pngUrl = URL.createObjectURL(png); anchor.href = pngUrl; anchor.download = filename; anchor.click(); URL.revokeObjectURL(pngUrl);
+  } finally { URL.revokeObjectURL(objectUrl); }
 }
 
 export default function App() {
   const [game, setGame] = useState<GameState>(readSaved);
   const [showArbiter, setShowArbiter] = useState(false);
   const [showPowers, setShowPowers] = useState(false);
+  const [showJourney, setShowJourney] = useState(false);
   const [flash, setFlash] = useState('');
   const [tick, setTick] = useState(Date.now());
-  const [mission, setMission] = useState(WEDDING_MISSIONS[0]);
-  const [friendDraft, setFriendDraft] = useState(game.friends.join(', '));
-  const [voteQuestionIndex, setVoteQuestionIndex] = useState(0);
+  const [roomStatus, setRoomStatus] = useState<'connecting' | 'online' | 'offline'>('connecting');
+  const [roomPlayers, setRoomPlayers] = useState(0);
+  const [offlineReady, setOfflineReady] = useState(false);
+  const socketRef = useRef<WebSocket | null>(null);
+  const revisionRef = useRef(0);
+  const remoteSnapshotRef = useRef(false);
+  const roomReadyRef = useRef(false);
+  const arbiterTriggerRef = useRef<HTMLButtonElement>(null);
 
-  useEffect(() => { try { localStorage.setItem(STORAGE_KEY, serializeGame(game)); } catch { setFlash('Local save unavailable. Export your game state from the Arbiter panel.'); } }, [game]);
+  useEffect(() => {
+    let closed = false; let retryTimer = 0;
+    const connect = () => {
+      if (closed) return;
+      setRoomStatus('connecting');
+      const socket = new WebSocket(ROOM_URL); socketRef.current = socket;
+      socket.onopen = () => { if (!closed) setRoomStatus('connecting'); };
+      socket.onmessage = (event) => {
+        try {
+          const message = JSON.parse(String(event.data)) as { type: string; state?: unknown; revision?: number; connections?: number };
+          if (message.type !== 'snapshot' || !message.state) return;
+          revisionRef.current = Number(message.revision) || 0;
+          roomReadyRef.current = true;
+          setRoomStatus('online');
+          setRoomPlayers(Number(message.connections) || 1);
+          if (revisionRef.current === 0) {
+            try {
+              const saved = localStorage.getItem(STORAGE_KEY);
+              if (saved) {
+                const candidate = parseGame(saved);
+                if (candidate.startedAt || candidate.step > 0 || candidate.selectedPiece) socket.send(JSON.stringify({ type: 'bootstrap', state: candidate }));
+              }
+            } catch { /* A corrupt local snapshot must never replace the shared room. */ }
+          }
+          remoteSnapshotRef.current = true;
+          setGame(parseGame(JSON.stringify(message.state)));
+        } catch { setRoomStatus('offline'); }
+      };
+      socket.onclose = () => { if (!closed) { setRoomStatus('offline'); retryTimer = window.setTimeout(connect, 1800); } };
+      socket.onerror = () => socket.close();
+    };
+    connect();
+    return () => { closed = true; window.clearTimeout(retryTimer); socketRef.current?.close(); };
+  }, []);
+
+  useEffect(() => {
+    if (!roomReadyRef.current) return;
+    try { localStorage.setItem(STORAGE_KEY, serializeGame(game)); } catch { setFlash('This browser could not save a local backup. The shared game is still online.'); }
+    if (remoteSnapshotRef.current) { remoteSnapshotRef.current = false; return; }
+    const socket = socketRef.current;
+    if (roomReadyRef.current && roomStatus === 'online' && socket?.readyState === WebSocket.OPEN) socket.send(JSON.stringify({ type: 'update', state: game }));
+  }, [game, roomStatus]);
   useEffect(() => { const id = window.setInterval(() => setTick(Date.now()), 300); return () => window.clearInterval(id); }, []);
+  useEffect(() => {
+    const onMessage = (event: MessageEvent) => { if (event.data?.type === 'OFFLINE_READY') setOfflineReady(true); };
+    navigator.serviceWorker?.addEventListener('message', onMessage);
+    if (navigator.serviceWorker?.controller) navigator.serviceWorker.controller.postMessage({ type: 'CHECK_OFFLINE_READY' });
+    return () => navigator.serviceWorker?.removeEventListener('message', onMessage);
+  }, []);
   const timeLeft = useMemo(() => remainingSeconds(game.clock, tick), [game.clock, tick]);
-  const current = CHALLENGES[Math.min(game.step, 5)];
   const unusedCards = POWER_CARDS.filter((card) => !game.powerUsed.includes(card.id));
 
+  function say(text: string) { setFlash(text); window.setTimeout(() => setFlash(''), 2800); }
   function update(changes: Partial<GameState> | ((current: GameState) => GameState)) {
+    if (roomStatus !== 'online') { say('Waiting for the shared room to reconnect. Try that move again in a moment.'); return; }
     setGame((currentState) => typeof changes === 'function' ? changes(currentState) : ({ ...currentState, ...changes }));
   }
-  function say(text: string) { setFlash(text); window.setTimeout(() => setFlash(''), 2800); }
   function beginWelcome() { update({ screen: 'welcome' }); }
   function receivePrep() { update({ screen: 'preparation', startedAt: game.startedAt || new Date().toISOString() }); }
   function launchGame() { update({ screen: 'game', opened: false }); }
-  function resolve(resolution: Resolution) { const expectedStep = game.step; update((s) => resolveCurrent(s, resolution, expectedStep)); setShowPowers(false); }
+  function resolve(resolution: Resolution, index = game.viewingStep ?? game.step) { update((s) => resolveEnvelope(s, index, resolution)); setShowPowers(false); }
   function playCard(id: string) {
     const card = POWER_CARDS.find((item) => item.id === id);
     if (!card || game.powerUsed.includes(id)) return;
@@ -68,52 +139,53 @@ export default function App() {
   function exportSave() {
     const a = document.createElement('a'); a.href = URL.createObjectURL(new Blob([serializeGame(game)], { type: 'application/json' })); a.download = 'pawns-promotion-save.json'; a.click(); URL.revokeObjectURL(a.href);
   }
-  async function importSave(file?: File) {
-    if (!file) return;
-    try { update(parseGame(await file.text())); setShowArbiter(false); say('Game restored.'); }
-    catch (error) { say(error instanceof Error ? error.message : 'Unable to read that save file.'); }
-  }
   function fastForward() {
     const remaining = CHALLENGES.filter((_, index) => !game.statuses[index]).map((challenge) => `• ${challenge.title}`).join('\n');
     if (!window.confirm(`TIME TROUBLE\n\nRemaining envelopes will be recorded as deferred:\n${remaining || 'None'}\n\nMake promotion available now?`)) return;
     update((s) => fastTrack(s)); setShowArbiter(false);
   }
   function undo() { update((s) => undoProgress(s)); }
-  function jump(index: number) { update((s) => { const statuses = [...s.statuses]; for (let i = 0; i < index; i += 1) if (!statuses[i]) statuses[i] = 'deferred'; return { ...s, statuses, step: index, rank: index + 2, screen: 'game', opened: false }; }); setShowArbiter(false); }
+  function jump(index: number | null) {
+    update((s) => ({ ...s, viewingStep: index, screen: index === null ? s.selectedPiece ? 'reward' : s.step === 6 ? 'promotion' : 'game' : 'game', opened: index === null ? false : s.statuses[index] !== null }));
+    setShowArbiter(false);
+    setShowJourney(false);
+  }
+  function goToCurrent() { if (!game.startedAt && ['landing', 'welcome', 'preparation'].includes(game.screen)) return; jump(null); }
 
   const progressVisible = ['preparation', 'game', 'promotion', 'reward'].includes(game.screen);
   return (
     <div className="app-shell">
       <header className="topbar">
-        <button className="brand" onClick={() => update({ screen: game.selectedPiece ? 'reward' : 'landing' })} aria-label="The Pawn's Promotion home">
+        <button className="brand" onClick={goToCurrent} aria-label="Return to the current shared game state">
           <span className="brand-mark">♟</span><span><b>THE PAWN'S PROMOTION</b><small>INTERNATIONAL BACHELOR FEDERATION</small></span>
         </button>
         <div className="top-actions">
           {game.selectedPiece && <button className="subtle-button" onClick={() => update({ screen: 'reward' })}><Trophy size={16} /> Certificate</button>}
+          {progressVisible && <button className="subtle-button" onClick={() => setShowJourney((open) => !open)} aria-expanded={showJourney}><Compass size={16} /> Journey</button>}
           {progressVisible && <button className="subtle-button" onClick={() => setShowPowers((open) => !open)}><Shield size={16} /> Powers <span className="count-pill">{unusedCards.length}</span></button>}
-          {progressVisible && <button className="arbiter-trigger" onClick={() => setShowArbiter(true)} aria-label="Open Chief Arbiter panel"><Menu size={18} /><span>Arbiter</span></button>}
+          {progressVisible && <button ref={arbiterTriggerRef} className="arbiter-trigger" onClick={() => setShowArbiter(true)} aria-label="Open Chief Arbiter panel"><Menu size={18} /><span>Arbiter</span></button>}
         </div>
       </header>
 
-      {progressVisible && <Progress state={game} />}
+      <div className={`room-status ${roomStatus}`} role="status">
+        {roomStatus === 'online' ? <Wifi size={15} /> : <WifiOff size={15} />}
+        <span>{roomStatus === 'online' ? `SHARED GAME · ${roomPlayers} ${roomPlayers === 1 ? 'PHONE' : 'PHONES'} CONNECTED` : roomStatus === 'connecting' ? 'CONNECTING TO TONIGHT’S SHARED GAME…' : 'RECONNECTING TO THE SHARED GAME…'}</span>
+        {offlineReady && <span className="offline-ready">OFFLINE READY</span>}
+      </div>
+      {progressVisible && <Progress state={game} onJump={jump} />}
+      {showJourney && progressVisible && <div className="journey-popover"><button className="journey-close" onClick={() => setShowJourney(false)} aria-label="Close rank journey"><X size={16} /> CLOSE JOURNEY</button><Journey state={game} onBegin={() => jump(0)} onJump={jump} /></div>}
       {flash && <div className="toast" role="status">{flash}</div>}
 
       <main className="content">
-        {game.screen === 'landing' && <Landing onBegin={beginWelcome} groom={game.groom} city={game.city} eventDate={game.eventDate} />}
+        {game.screen === 'landing' && <Landing onBegin={beginWelcome} state={game} onJump={jump} />}
         {game.screen === 'welcome' && <section className="welcome page-in">
-          <div className="eyebrow"><span className="red-dot" /> PLAYER REGISTRATION · WHITE TO MOVE</div>
-          <h1>Before the first move.</h1>
-          <p className="lead">A few names make the evening feel like yours. Leave anything blank that you would rather skip.</p>
-          <div className="form-grid">
-            <label>THE GROOM<input autoFocus value={game.groom} onChange={(e) => update({ groom: e.target.value })} placeholder="Name on the score sheet" /></label>
-            <label>THE QUEEN<input value={game.bride} onChange={(e) => update({ bride: e.target.value })} placeholder="Future Queen (optional)" /></label>
-            <label className="full">THE BROTHERHOOD <span className="field-note">Comma-separated; used for Sharks and missions.</span><input value={friendDraft} onChange={(e) => { setFriendDraft(e.target.value); update({ friends: e.target.value.split(',').map((name) => name.trim()).filter(Boolean) }); }} placeholder="Friends playing tonight" /></label>
-            <label>CHIEF ARBITER<input value={game.arbiter} onChange={(e) => update({ arbiter: e.target.value })} placeholder="Optional" /></label>
-            <label>DINNER LIMIT <span className="field-note">Optional, for the Rook reward.</span><input value={game.spendingLimit} onChange={(e) => update({ spendingLimit: e.target.value })} placeholder="Agree together later" /></label>
-          </div>
+          <div className="eyebrow"><span className="red-dot" /> THE LINEUP · WHITE TO MOVE</div>
+          <h1>Tonight’s board.</h1>
+          <p className="lead">One shared match for the whole group. Every move appears on every phone as it happens.</p>
+          <div className="lineup-card"><div className="lineup-feature"><span>♔</span><div><small>THE GROOM</small><strong>{GROOM}</strong></div><span className="lineup-heart">♥</span><div><small>THE QUEEN</small><strong>{BRIDE}</strong></div></div><div className="lineup-friends">{BROTHERHOOD.map((name, index) => <span key={name}><b>{String(index + 1).padStart(2, '0')}</b>{name}</span>)}</div></div>
           <article className="letter-card">
             <div className="eyebrow">A LETTER FROM THE FEDERATION</div>
-            <p>Dear {game.groom || 'Pawn'},</p>
+            <p>Dear {GROOM},</p>
             {GAME_CONTENT.welcome.map((paragraph) => <p key={paragraph}>{paragraph}</p>)}
             <p className="letter-sign">Your clock starts now.<br /><b>The International Bachelor Federation</b></p>
           </article>
@@ -129,17 +201,17 @@ export default function App() {
         </section>}
 
         {game.screen === 'game' && <ChallengeScreen
-          state={game} current={current} opened={game.opened} onOpen={() => update({ opened: true })}
-          onResolve={resolve} onStartTimer={startTimer} onPauseTimer={pauseTimer} onResumeTimer={resumeTimer} onResetTimer={resetTimer}
-          timeLeft={timeLeft} onUpdate={update} say={say} voteQuestionIndex={voteQuestionIndex} setVoteQuestionIndex={setVoteQuestionIndex}
+          state={game} current={CHALLENGES[Math.min(game.viewingStep ?? game.step, 5)]} opened={game.opened} onOpen={() => update({ opened: true })}
+          onResolve={(result) => resolve(result, game.viewingStep ?? game.step)} onStartTimer={startTimer} onPauseTimer={pauseTimer} onResumeTimer={resumeTimer} onResetTimer={resetTimer}
+          timeLeft={timeLeft} onUpdate={update} say={say} onReturnToCurrent={goToCurrent}
         />}
 
         {game.screen === 'promotion' && <Promotion state={game} onChoose={(piece) => {
-          if (!window.confirm(`Promote to ${piece}? The chosen reward will be revealed and saved to this device.`)) return;
+          if (!window.confirm(`Promote to ${piece}? The chosen reward will be revealed for everyone on the shared board.`)) return;
           update((s) => selectPromotion(s, piece));
         }} />}
 
-        {game.screen === 'reward' && <RewardScreen state={game} onUpdate={update} mission={mission} setMission={setMission} />}
+        {game.screen === 'reward' && <RewardScreen state={game} onUpdate={update} say={say} />}
       </main>
 
       {showPowers && <div className="drawer-backdrop" onClick={() => setShowPowers(false)}><aside className="power-drawer" onClick={(e) => e.stopPropagation()} aria-label="Power cards">
@@ -148,35 +220,71 @@ export default function App() {
         <p className="fine-print">Each card requires the Chief Arbiter’s approval. A card modifies the current challenge; it never advances the board.</p>
       </aside></div>}
 
-      {showArbiter && <ArbiterPanel state={game} onClose={() => setShowArbiter(false)} onUpdate={update} onResolve={resolve} onFastTrack={fastForward} onUndo={undo} onJump={jump} onExport={exportSave} onImport={importSave} say={say} />}
+      {showArbiter && <ArbiterPanel state={game} onClose={() => setShowArbiter(false)} triggerRef={arbiterTriggerRef} onUpdate={update} onResolve={resolve} onFastTrack={fastForward} onUndo={undo} onJump={jump} onExport={exportSave} />}
       <footer className="footer"><span>COLOMBO · {game.eventDate.toUpperCase()}</span><span>NO CLOCK WITHOUT CONSENT · NO MOVE WITHOUT JOY</span></footer>
     </div>
   );
 }
 
-function Landing({ onBegin, groom, city, eventDate }: { onBegin: () => void; groom: string; city: string; eventDate: string }) {
+function Landing({ onBegin, state, onJump }: { onBegin: () => void; state: GameState; onJump: (index: number | null) => void }) {
   return <section className="landing page-in">
     <div className="hero-copy">
-      <div className="eyebrow"><span className="red-dot" /> AN INVITATION TO {groom ? `${groom.toUpperCase()}’S` : 'THE'} FINAL MATCH</div>
+      <div className="eyebrow"><span className="red-dot" /> AN INVITATION TO {GROOM.toUpperCase()}’S FINAL MATCH</div>
       <h1>The Pawn's<br /><em>Promotion</em></h1>
       <p className="subtitle">THE FINAL NIGHT OF BACHELORHOOD</p>
-      <p className="hero-deck">Six moves. Four powers. One promotion.</p>
-      <p className="event-line">{city.toUpperCase()} <span>·</span> {eventDate.toUpperCase()}</p>
+      <p className="hero-deck">Six moves. Four powers. One shared board.</p>
+      <p className="event-line">COLOMBO <span>·</span> 26 NOVEMBER 2026</p>
       <button className="primary-button" onClick={onBegin}>BEGIN THE GAME <Play size={16} /></button>
-      <p className="muted-note">A private, locally saved game for one very important player.</p>
+      <p className="muted-note">One match, shared live across the group’s phones.</p>
     </div>
-    <div className="hero-art" aria-label="Chessboard with a white pawn">
-      <div className="board-frame"><div className="chessboard">{Array.from({ length: 64 }, (_, i) => <div key={i} className={(Math.floor(i / 8) + i % 8) % 2 ? 'dark-square' : 'light-square'} />)}<span className="hero-pawn">♙</span><span className="board-coordinate file">a · b · c · d · e · f · g · h</span><span className="board-coordinate rank">8<br />7<br />6<br />5<br />4<br />3<br />2<br />1</span></div></div>
-      <div className="art-caption"><span>♙</span><div><small>POSITION</small><b>WHITE TO MOVE</b></div><div><small>DESTINATION</small><b>THE EIGHTH RANK</b></div></div>
-      <span className="art-index">FIELD NOTE 001<br />26 · XI · MMXXVI</span>
-    </div>
+    <Journey state={state} onBegin={onBegin} onJump={onJump} />
   </section>;
 }
 
-function Progress({ state }: { state: GameState }) {
+const RANK_TITLES = [
+  'PROMOTION — THE FINAL CEREMONY',
+  'THE TEST OF COURAGE',
+  'THE TEST OF LOYALTY',
+  'THE TEST OF ROMANCE',
+  'THE TEST OF CREATIVITY',
+  'THE TEST OF INTELLIGENCE',
+  'THE TEST OF CONFIDENCE',
+  'BACHELORHOOD — STARTING POSITION',
+];
+
+function Journey({ state, onBegin, onJump }: { state: GameState; onBegin: () => void; onJump: (index: number | null) => void }) {
+  const rows = Array.from({ length: 8 }, (_, index) => 8 - index);
+  return <div className="rank-journey" aria-label="Interactive promotion journey">
+    <div className="journey-heading"><div><span className="eyebrow">THE ROAD TO RANK EIGHT</span><strong>Make your next move.</strong></div><span className="journey-live"><span /> LIVE BOARD</span></div>
+    <div className="journey-rows">
+      {rows.map((rank) => {
+        const challengeIndex = rank - 2;
+        const status = challengeIndex >= 0 && challengeIndex < 6 ? state.statuses[challengeIndex] : null;
+        const isCurrent = rank === state.rank;
+        const isActive = rank >= 2 && rank <= 7 && (challengeIndex === state.step || status !== null);
+        const isPromotion = rank === 8 && state.step === 6;
+        const enabled = isActive || isPromotion || (rank === 2 && state.startedAt === null);
+        const piece = rank === 8 ? '♛' : rank === state.rank ? '♟' : rank === 1 ? '♙' : status && status !== 'deferred' ? '✓' : '';
+        const stateText = isCurrent ? 'CURRENT RANK' : status === 'deferred' ? 'DEFERRED · RETURN ANYTIME' : status ? 'COMPLETED' : isPromotion ? 'PROMOTION READY' : rank === 1 ? 'START' : 'LOCKED';
+        return <button key={rank} className={`journey-row ${isCurrent ? 'current' : ''} ${status === 'deferred' ? 'deferred' : ''} ${status && status !== 'deferred' ? 'completed' : ''} ${rank === 8 ? 'promotion-rank' : ''}`} disabled={!enabled} onClick={() => {
+          if (rank === 8) onJump(null);
+          else if (rank === 2 && state.startedAt === null) onBegin();
+          else onJump(challengeIndex);
+        }}>
+          <span className="journey-coordinate">{rank}</span><span className="journey-square" aria-hidden="true">{piece}</span>
+          <span className="journey-label"><strong>{RANK_TITLES[8 - rank]}</strong><small>{stateText}</small></span>
+          <span className="journey-arrow" aria-hidden="true">{enabled ? '↗' : '·'}</span>
+        </button>;
+      })}
+    </div>
+    <div className="journey-foot"><span>ONE SHARED POSITION</span><span>COLOMBO · NOV 26</span></div>
+  </div>;
+}
+
+function Progress({ state, onJump }: { state: GameState; onJump: (index: number | null) => void }) {
   const queenPending = state.statuses[4] === 'deferred' && !state.queenVerdict;
-  return <div className="progress-shell"><div className="progress-meta"><span>THE ROAD TO PROMOTION</span>{queenPending && <span className="pending-indicator">QUEEN'S VERDICT PENDING</span>}<span>RANK {state.rank} <b>/</b> 8</span></div><div className="rank-track" aria-label={`Progress: rank ${state.rank} of 8`}>
-    {Array.from({ length: 7 }, (_, index) => { const rank = index + 2; const challengeIndex = index - 1; const status = challengeIndex >= 0 ? state.statuses[challengeIndex] : null; return <div key={rank} className={`rank-cell ${rank <= state.rank ? 'reached' : ''} ${rank === state.rank ? 'current' : ''} ${status === 'skipped' ? 'was-skipped' : ''}`}><span className="rank-number">{rank}</span><span className="rank-piece">{rank === state.rank ? '♟' : status && status !== 'deferred' ? status === 'skipped' ? '–' : '✓' : ''}</span></div>; })}
+  return <div className="progress-shell"><div className="progress-meta"><span>THE SHARED BOARD</span>{queenPending && <span className="pending-indicator">QUEEN'S VERDICT PENDING</span>}<span>RANK {state.rank} <b>/</b> 8</span></div><div className="rank-track" aria-label={`Progress: rank ${state.rank} of 8`}>
+    {Array.from({ length: 7 }, (_, index) => { const rank = index + 2; const challengeIndex = index; const status = state.statuses[challengeIndex]; const available = rank === state.rank || Boolean(status); return <button key={rank} className={`rank-cell ${rank <= state.rank ? 'reached' : ''} ${rank === state.rank ? 'current' : ''} ${status === 'skipped' ? 'was-skipped' : ''}`} aria-label={`Rank ${rank}: ${RANK_TITLES[8 - rank]}`} disabled={!available} onClick={() => rank === 8 ? onJump(null) : onJump(challengeIndex)}><span className="rank-number">{rank}</span><span className="rank-piece">{rank === state.rank ? '♟' : status === 'deferred' ? '↶' : status ? status === 'skipped' ? '–' : '✓' : ''}</span></button>; })}
   </div></div>;
 }
 
@@ -184,28 +292,29 @@ function PowerCard({ card, used, index }: { card: (typeof POWER_CARDS)[number]; 
   return <article className={`power-card ${used ? 'is-used' : ''}`} style={{ animationDelay: `${index * 70}ms` }}><div className="card-top"><span className="card-index">POWER {String(index + 1).padStart(2, '0')}</span><span className="card-glyph">{card.mark}</span></div><h3>{card.name}</h3><p>{card.copy}</p><div className="card-bottom"><span>ONE USE ONLY</span><span>IBF · 2026</span></div></article>;
 }
 
-function ChallengeScreen({ state, current, opened, onOpen, onResolve, onStartTimer, onPauseTimer, onResumeTimer, onResetTimer, timeLeft, onUpdate, say, voteQuestionIndex, setVoteQuestionIndex }: {
+function ChallengeScreen({ state, current, opened, onOpen, onResolve, onStartTimer, onPauseTimer, onResumeTimer, onResetTimer, timeLeft, onUpdate, say, onReturnToCurrent }: {
   state: GameState; current: typeof CHALLENGES[number]; opened: boolean; onOpen: () => void; onResolve: (result: Resolution) => void;
   onStartTimer: (label: string, duration: number) => void; onPauseTimer: () => void; onResumeTimer: () => void; onResetTimer: () => void; timeLeft: number;
-  onUpdate: (changes: Partial<GameState> | ((current: GameState) => GameState)) => void; say: (text: string) => void; voteQuestionIndex: number; setVoteQuestionIndex: (value: number) => void;
+  onUpdate: (changes: Partial<GameState> | ((current: GameState) => GameState)) => void; say: (text: string) => void; onReturnToCurrent: () => void;
 }) {
   const [sealBreaking, setSealBreaking] = useState(false);
-  const index = state.step;
+  const index = state.viewingStep ?? state.step;
   if (index >= 6) return null;
   const status = state.statuses[index];
+  const isEarlierEnvelope = index !== state.step;
+  const readOnlyEnvelope = isEarlierEnvelope && status !== 'deferred';
   const question = state.iqQuestions[state.iqIndex];
   const roleResult = voteResult(state.sharks.map((shark) => shark.vote));
   const rapPool = state.rapDifficulty === 'Brutal Mix' ? BRUTAL_WORDS : (RAP_WORDS[state.rapDifficulty] || RAP_WORDS.Medium);
 
   function drawSharks() {
-    const friends = state.friends.length ? state.friends : ['Friend One', 'Friend Two', 'Friend Three'];
-    const roles = drawUnique(SHARK_ROLES, Math.min(friends.length, SHARK_ROLES.length));
-    onUpdate({ sharks: friends.slice(0, roles.length).map((name, idx) => ({ name, role: roles[idx].name, vote: null, question: roles[idx].questions[0] })) });
+    const roles = drawUnique(SHARK_ROLES, Math.min(BROTHERHOOD.length, SHARK_ROLES.length));
+    onUpdate({ sharks: BROTHERHOOD.map((name, idx) => ({ name, role: roles[idx].name, vote: null, question: roles[idx].questions[0], questionIndex: 0 })) });
   }
   function chooseQuestion(sharkIndex: number) {
     const shark = state.sharks[sharkIndex]; const role = SHARK_ROLES.find((entry) => entry.name === shark.role); if (!role) return;
-    const next = (voteQuestionIndex + 1) % role.questions.length; setVoteQuestionIndex(next);
-    onUpdate((s) => ({ ...s, sharks: s.sharks.map((item, idx) => idx === sharkIndex ? { ...item, question: role.questions[next] } : item) }));
+    const next = ((shark.questionIndex || 0) + 1) % role.questions.length;
+    onUpdate((s) => ({ ...s, sharks: s.sharks.map((item, idx) => idx === sharkIndex ? { ...item, question: role.questions[next], questionIndex: next } : item) }));
   }
   function drawRap() {
     onUpdate({ rapWords: rerollRapWords(state.rapWords, rapPool), rapPrepared: state.rapPrepared });
@@ -229,7 +338,7 @@ function ChallengeScreen({ state, current, opened, onOpen, onResolve, onStartTim
       <button className="primary-button" onClick={() => { setSealBreaking(true); window.setTimeout(onOpen, 260); }}>OPEN ENVELOPE <Unlock size={17} /></button>
       <small className="sealed-note">SEALED BY THE INTERNATIONAL BACHELOR FEDERATION</small>
     </article> : <>
-      <div className="challenge-titlebar"><div><div className="eyebrow">ENVELOPE {String(index + 1).padStart(2, '0')} · {current.concept.toUpperCase()}</div><h1>{current.title}</h1><p>{current.principle}</p></div><div className="rank-pair"><span>{current.from}</span><ChevronRight /><b>{current.to}</b></div></div>
+      <div className="challenge-titlebar"><div><div className="eyebrow">ENVELOPE {String(index + 1).padStart(2, '0')} · {current.concept.toUpperCase()}</div><h1>{current.title}</h1><p>{current.principle}</p>{isEarlierEnvelope && <span className="viewing-pill">{readOnlyEnvelope ? 'PAST ENVELOPE' : 'DEFERRED · READY TO RESOLVE'}</span>}</div><div className="rank-pair"><span>{current.from}</span><ChevronRight /><b>{current.to}</b></div></div>
       <div className="challenge-layout">
         <article className="challenge-body">
           {index === 0 && <>
@@ -248,7 +357,7 @@ function ChallengeScreen({ state, current, opened, onOpen, onResolve, onStartTim
             <div className="timer-block"><Timer label="60-second preparation" seconds={60} state={state} onStart={onStartTimer} onPause={onPauseTimer} onResume={onResumeTimer} onReset={onResetTimer} timeLeft={timeLeft} /></div>
             <div className="timer-block"><Timer label="60-second recording" seconds={60} state={state} onStart={onStartTimer} onPause={onPauseTimer} onResume={onResumeTimer} onReset={onResetTimer} timeLeft={timeLeft} /></div>
             <label className="upload-proxy">OPEN CAMERA / CHOOSE VIDEO
-              <input type="file" accept="video/*" capture="user" onChange={() => say('Camera returned. The video remains in your camera roll; it was not saved by this game.')} />
+              <input className="camera-picker" type="file" accept="video/*" capture="user" aria-label="Open camera or choose a video" onChange={() => say('Camera returned. The video remains in your camera roll; it was not saved by this game.')} />
             </label>
           </>}
 
@@ -287,9 +396,9 @@ function ChallengeScreen({ state, current, opened, onOpen, onResolve, onStartTim
           </>}
         </article>
 
-        <aside className="challenge-aside"><div className="aside-label">THE CHIEF ARBITER</div><div className="arbiter-avatar">♟</div><p>{state.arbiter || 'The house decides.'}</p><div className="aside-rule" /><strong>HOUSE RULE</strong><p>Move at your own pace. A skip is a valid move. The game is here to celebrate the groom, never to corner him.</p>{index === 4 && !state.queenVerdict && <button className="aside-link" onClick={() => onResolve('deferred')}><SkipForward size={15} /> Defer for now</button>}</aside>
+        <aside className="challenge-aside"><div className="aside-label">THE CHIEF ARBITER</div><div className="arbiter-avatar">♟</div><p>{state.arbiter || 'The house decides.'}</p><div className="aside-rule" /><strong>HOUSE RULE</strong><p>Move at your own pace. A skip is a valid move. The game is here to celebrate the groom, never to corner him.</p>{index === 4 && !state.queenVerdict && !readOnlyEnvelope && <button className="aside-link" onClick={() => onResolve('deferred')}><SkipForward size={15} /> Defer verdict</button>}</aside>
       </div>
-      <div className="resolution-bar"><div className="resolution-note">{status ? <span><Check size={16} /> This envelope is {status === 'deferred' ? 'deferred and still available' : status}.</span> : <span><Flag size={16} /> Chief Arbiter confirms the result.</span>}</div><div className="resolution-actions"><button className="quiet-button" onClick={() => onResolve('skipped')} disabled={Boolean(status && status !== 'deferred')}>SKIP</button><button className="secondary-button" onClick={() => onResolve('modified')} disabled={Boolean(status && status !== 'deferred')}>MODIFIED & COMPLETE</button><button className="primary-button compact" onClick={() => onResolve('completed')} disabled={Boolean(status && status !== 'deferred')}>CHALLENGE COMPLETE <Check size={16} /></button></div></div>
+      <div className="resolution-bar"><div className="resolution-note">{status ? <span><Check size={16} /> This envelope is {status === 'deferred' ? 'deferred and still available' : status}.</span> : <span><Flag size={16} /> Chief Arbiter confirms the result.</span>}</div><div className="resolution-actions">{readOnlyEnvelope ? <button className="primary-button compact" onClick={onReturnToCurrent}>RETURN TO CURRENT MOVE <ChevronRight size={16} /></button> : <><button className="quiet-button" onClick={() => onResolve('skipped')} disabled={Boolean(status && status !== 'deferred')}>SKIP</button><button className="secondary-button" onClick={() => onResolve('modified')} disabled={Boolean(status && status !== 'deferred')}>MODIFY & COMPLETE</button><button className="primary-button compact" onClick={() => onResolve('completed')} disabled={Boolean(status && status !== 'deferred')}>COMPLETE <Check size={16} /></button>{!isEarlierEnvelope && <button className="defer-button" onClick={() => onResolve('deferred')} disabled={Boolean(status && status !== 'deferred')}><SkipForward size={15} /> DEFER VERDICT</button>}</>}</div></div>
     </>}
   </section>;
 }
@@ -297,7 +406,7 @@ function ChallengeScreen({ state, current, opened, onOpen, onResolve, onStartTim
 function Timer({ label, seconds, state, onStart, onPause, onResume, onReset, timeLeft }: { label: string; seconds: number; state: GameState; onStart: (label: string, duration: number) => void; onPause: () => void; onResume: () => void; onReset: () => void; timeLeft: number }) {
   const active = state.clock.label === label && state.clock.duration > 0;
   const value = active ? timeLeft : seconds;
-  return <div className={`timer ${active ? 'active' : ''}`}><div className="timer-copy"><Clock3 size={17} /><span>{label}</span></div><strong className={value === 0 ? 'time-up' : ''}>{`${String(Math.floor(value / 60)).padStart(2, '0')}:${String(value % 60).padStart(2, '0')}`}</strong><div className="timer-buttons">{!active || !state.clock.startedAt && value > 0 ? <button className="timer-button" onClick={() => active ? onResume() : onStart(label, seconds)} aria-label="Start timer">{active ? <Play size={14} /> : <Play size={14} />}</button> : <button className="timer-button" onClick={onPause} aria-label="Pause timer"><Pause size={14} /></button>}<button className="timer-button" onClick={() => active ? onReset() : onStart(label, seconds)} aria-label="Reset timer"><RotateCcw size={14} /></button></div></div>;
+  return <div className={`timer ${active ? 'active' : ''}`}><div className="timer-copy"><Clock3 size={17} /><span>{label}</span></div><strong className={value === 0 ? 'time-up' : ''}>{`${String(Math.floor(value / 60)).padStart(2, '0')}:${String(value % 60).padStart(2, '0')}`}</strong><div className="timer-buttons">{value === 0 && <button className="timer-restart" onClick={() => onStart(label, seconds)}>RESTART</button>}{!active || !state.clock.startedAt && value > 0 ? <button className="timer-button" onClick={() => active ? onResume() : onStart(label, seconds)} aria-label="Start timer"><Play size={14} /></button> : <button className="timer-button" onClick={onPause} aria-label="Pause timer"><Pause size={14} /></button>}<button className="timer-button" onClick={() => active ? onReset() : onStart(label, seconds)} aria-label="Reset timer"><RotateCcw size={14} /></button></div></div>;
 }
 
 function Promotion({ state, onChoose }: { state: GameState; onChoose: (piece: string) => void }) {
@@ -306,53 +415,78 @@ function Promotion({ state, onChoose }: { state: GameState; onChoose: (piece: st
     <p className="fine-print">The group agrees to any reward in good humour; every request stays reasonable, consensual and within agreed limits.</p></section>;
 }
 
-function RewardScreen({ state, onUpdate, mission, setMission }: { state: GameState; onUpdate: (changes: Partial<GameState> | ((current: GameState) => GameState)) => void; mission: string; setMission: (value: string) => void }) {
+function RewardScreen({ state, onUpdate, say }: { state: GameState; onUpdate: (changes: Partial<GameState> | ((current: GameState) => GameState)) => void; say: (message: string) => void }) {
   const piece = PIECES.find((item) => item.id === state.selectedPiece) || PIECES[0];
   const reward = REWARDS[piece.id];
-  const names = state.groom || 'The Grandmaster';
+  const names = GROOM;
   const rewardDescription = piece.id === 'Knight' && state.rewardNote ? state.rewardNote : reward.description;
-  const voucherLines = [piece.id.toUpperCase(), reward.title, names, rewardDescription, reward.terms, state.spendingLimit ? `Agreed limit: ${state.spendingLimit}` : 'Within mutually agreed limits', `Chief Arbiter: ${state.arbiter || 'The Brotherhood'}`];
-  const certificateLines = ['CERTIFICATE OF PROMOTION', 'GRANDMASTER OF MATRIMONY', `PRESENTED TO ${names.toUpperCase()}`, 'Bachelorhood successfully completed.', `Promoted to: ${piece.id}`, `Chief Arbiter: ${state.arbiter || 'The Brotherhood'}`, 'You spent your life looking for the perfect move. Then you found your Queen.'];
+  const eventDetails = `${state.city} · ${state.eventDate}`;
+  const terms = `${reward.terms}${state.spendingLimit ? ` Agreed spending limit: ${state.spendingLimit}.` : ''}`;
+  const voucherLines = [`THE ${piece.id.toUpperCase()} REWARD`, reward.title, `Presented to ${names}`, rewardDescription, `Redemption terms: ${terms}`, `Chief Arbiter: ${state.arbiter || 'The Brotherhood'}`, eventDetails, `The brotherhood: ${BROTHERHOOD.join(' · ')}`];
+  const certificateLines = ['CERTIFICATE OF PROMOTION', 'GRANDMASTER OF MATRIMONY', `PRESENTED TO ${names.toUpperCase()}`, 'Bachelorhood successfully completed.', `Promoted to: ${piece.id}`, `Chief Arbiter: ${state.arbiter || 'The Brotherhood'}`, eventDetails, `The brotherhood: ${BROTHERHOOD.join(' · ')}`, 'You spent your life looking for the perfect move. Then you found your Queen.'];
   async function share(text: string) {
-    try { if (navigator.share) await navigator.share({ title: "The Pawn's Promotion", text }); else { await navigator.clipboard.writeText(text); } }
-    catch { /* A dismissed share sheet is not an error for the game. */ }
+    if (navigator.share) {
+      try { await navigator.share({ title: "The Pawn's Promotion", text, url: window.location.href }); say('Voucher shared.'); return; }
+      catch (error) { if (error instanceof DOMException && error.name === 'AbortError') return; }
+    }
+    try { await navigator.clipboard.writeText(text); say('Voucher details copied.'); }
+    catch { say('Sharing is unavailable here. Save the PNG instead.'); }
   }
-  return <section className="reward-page page-in"><div className="eyebrow"><span className="red-dot" /> THE GAME IS COMPLETE · REWARD UNSEALED</div><div className="reward-heading"><span className="reward-piece">{piece.symbol}</span><div><h1>Grandmaster of<br /><em>Matrimony.</em></h1><p>Promotion secured: {piece.id} · {state.city} · {state.eventDate}</p></div></div>
-    <article className="voucher" id="voucher"><div className="voucher-bar"><span>INTERNATIONAL BACHELOR FEDERATION</span><span>VOUCHER · 2026</span></div><div className="voucher-content"><div className="eyebrow">THE {piece.id.toUpperCase()} REWARD</div><h2>{reward.title}</h2><h3>Presented to {names}</h3><p>{rewardDescription}</p><div className="voucher-terms"><b>REDEMPTION TERMS</b><p>{reward.terms}{state.spendingLimit ? ` Agreed spending limit: ${state.spendingLimit}.` : ''}</p></div><div className="voucher-seal">♙</div><small>COLOMBO · 26 NOVEMBER 2026 · CHIEF ARBITER: {state.arbiter || 'THE BROTHERHOOD'}</small></div></article>
-    <div className="voucher-actions"><button className="secondary-button" onClick={() => downloadSvg('THE PAWN’S PROMOTION', voucherLines, 'pawns-promotion-voucher.svg')}><Download size={16} /> SAVE VOUCHER AS IMAGE</button><button className="secondary-button" onClick={() => void share(`${piece.id} — ${reward.title}\n\n${reward.description}\n\n${reward.terms}`)}><Share2 size={16} /> SHARE / COPY VOUCHER</button><button className="secondary-button" onClick={() => window.print()}><FileDown size={16} /> PRINT</button></div>
-    {piece.id === 'Queen' && <section className="reward-extra"><div className="eyebrow">OPTIONAL · THE WEDDING MISSION GENERATOR</div><h2>Issue one secret mission.</h2><div className="mission-box"><p>{mission}</p><button className="icon-button" onClick={() => setMission(WEDDING_MISSIONS[Math.floor(Math.random() * WEDDING_MISSIONS.length)])} aria-label="Draw another mission"><RotateCcw /></button></div><div className="button-row"><button className="text-button" onClick={() => void navigator.clipboard?.writeText(mission)}>COPY MISSION</button><button className="text-button" onClick={() => setMission('Write your own mission here.')}>WRITE A CUSTOM MISSION</button></div></section>}
+  function printItem(target: 'voucher' | 'certificate') {
+    document.body.dataset.printTarget = target;
+    window.addEventListener('afterprint', () => { delete document.body.dataset.printTarget; }, { once: true });
+    window.print();
+  }
+  return <section className="reward-page page-in"><div className="eyebrow"><span className="red-dot" /> THE GAME IS COMPLETE · REWARD UNSEALED</div><div className="reward-heading"><span className="reward-piece">{piece.symbol}</span><div><h1>Grandmaster of<br /><em>Matrimony.</em></h1><p>Promotion secured: {piece.id} · {eventDetails}</p></div></div>
+    <article className="voucher" id="voucher"><div className="voucher-bar"><span>INTERNATIONAL BACHELOR FEDERATION</span><span>VOUCHER · 2026</span></div><div className="voucher-content"><div className="eyebrow">THE {piece.id.toUpperCase()} REWARD</div><h2>{reward.title}</h2><h3>Presented to {names}</h3><p>{rewardDescription}</p><div className="voucher-terms"><b>REDEMPTION TERMS</b><p>{terms}</p></div><div className="voucher-seal">♙</div><small>{eventDetails.toUpperCase()} · CHIEF ARBITER: {(state.arbiter || 'THE BROTHERHOOD').toUpperCase()}</small></div></article>
+    <div className="voucher-actions"><button className="secondary-button" onClick={() => void downloadPng('THE PAWN’S PROMOTION', voucherLines, 'pawns-promotion-voucher.png')}><Download size={16} /> SAVE VOUCHER AS PNG</button><button className="secondary-button" onClick={() => void share(voucherLines.join('\n\n'))}><Share2 size={16} /> SHARE / COPY VOUCHER</button><button className="secondary-button" onClick={() => printItem('voucher')}><span aria-hidden="true">▣</span> PRINT VOUCHER</button></div>
+    {piece.id === 'Queen' && <section className="reward-extra"><div className="eyebrow">OPTIONAL · THE WEDDING MISSION GENERATOR</div><h2>Issue one secret mission.</h2><div className="mission-box"><textarea value={state.mission} onChange={(event) => onUpdate({ mission: event.target.value })} aria-label="Edit the shared wedding mission" /><button className="icon-button" onClick={() => onUpdate({ mission: WEDDING_MISSIONS[Math.floor(Math.random() * WEDDING_MISSIONS.length)] })} aria-label="Draw another mission"><RotateCcw /></button></div><div className="button-row"><button className="text-button" onClick={async () => { try { await navigator.clipboard.writeText(state.mission); say('Mission copied.'); } catch { say('Clipboard unavailable.'); } }}>COPY MISSION</button></div></section>}
     {piece.id === 'Rook' && <section className="reward-extra"><div className="eyebrow">THE ROYAL BAILOUT</div><label className="block-label">AGREED SPENDING LIMIT<input value={state.spendingLimit} onChange={(e) => onUpdate({ spendingLimit: e.target.value })} placeholder="Set this together" /></label></section>}
     {piece.id === 'Bishop' && <BishopMissions state={state} />}
     {piece.id === 'Knight' && <section className="reward-extra"><div className="eyebrow">EDITABLE WILDCARD NOTE</div><p>Replace the default wildcard with The Unfinished Gambit if you want a future group adventure.</p><textarea value={state.rewardNote} onChange={(e) => onUpdate({ rewardNote: e.target.value })} placeholder="The Knight’s Wildcard — one reasonable request within twelve months." /><button className="text-button" onClick={() => onUpdate({ rewardNote: 'The Unfinished Gambit: a future group adventure including activities missed during the bachelor party.' })}>USE “THE UNFINISHED GAMBIT”</button></section>}
-    <section className="certificate"><div className="certificate-stamp">♙</div><div className="eyebrow">INTERNATIONAL BACHELOR FEDERATION</div><h2>CERTIFICATE OF PROMOTION</h2><div className="certificate-rule" /><h3>GRANDMASTER<br /><em>OF MATRIMONY</em></h3><p className="certificate-presented">PRESENTED TO</p><strong className="certificate-name">{names}</strong><p>Having survived numerous blunders, tactical traps, questionable gambits and one exceptional Queen.<br /><b>Bachelorhood successfully completed.</b></p><div className="certificate-meta"><span>PROMOTED TO {piece.id.toUpperCase()}</span><span>{state.city.toUpperCase()} · {state.eventDate.toUpperCase()}</span><span>CHIEF ARBITER · {state.arbiter || 'THE BROTHERHOOD'}</span></div><div className="certificate-friends">{state.friends.length ? `THE BROTHERHOOD · ${state.friends.join(' · ')}` : ''}</div><div className="certificate-final">You spent your life looking for the perfect move.<br /><b>Then you found your Queen.</b></div></section>
-    <div className="voucher-actions"><button className="primary-button" onClick={() => downloadSvg('GRANDMASTER OF MATRIMONY', certificateLines, 'grandmaster-certificate.svg')}><Download size={16} /> SAVE CERTIFICATE AS IMAGE</button><button className="secondary-button" onClick={() => window.print()}>PRINT CERTIFICATE</button></div>
-    <div className="privacy-note"><LockKeyhole size={16} /> Your names, game state, Queen’s feedback and scores are stored only in this browser. Export a backup from the Arbiter panel.</div>
+    <section className="certificate" id="certificate"><div className="certificate-stamp">♙</div><div className="eyebrow">INTERNATIONAL BACHELOR FEDERATION</div><h2>CERTIFICATE OF PROMOTION</h2><div className="certificate-rule" /><h3>GRANDMASTER<br /><em>OF MATRIMONY</em></h3><p className="certificate-presented">PRESENTED TO</p><strong className="certificate-name">{names}</strong><p>Having survived numerous blunders, tactical traps, questionable gambits and one exceptional Queen.<br /><b>Bachelorhood successfully completed.</b></p><div className="certificate-meta"><span>PROMOTED TO {piece.id.toUpperCase()}</span><span>{eventDetails.toUpperCase()}</span><span>CHIEF ARBITER · {state.arbiter || 'THE BROTHERHOOD'}</span></div><div className="certificate-friends">THE BROTHERHOOD · {BROTHERHOOD.join(' · ')}</div><div className="certificate-final">You spent your life looking for the perfect move.<br /><b>Then you found your Queen.</b></div></section>
+    <div className="voucher-actions"><button className="primary-button" onClick={() => void downloadPng('GRANDMASTER OF MATRIMONY', certificateLines, 'grandmaster-certificate.png')}><Download size={16} /> SAVE CERTIFICATE AS PNG</button><button className="secondary-button" onClick={() => printItem('certificate')}>PRINT CERTIFICATE</button></div>
+    <div className="privacy-note"><LockKeyhole size={16} /> Progress, votes, timers and rewards are shared live with the group. Camera videos stay on the device that records them.</div>
   </section>;
 }
 
 function BishopMissions({ state }: { state: GameState }) {
-  const assignment = useMemo(() => drawUnique(SECRET_TERMS, Math.max(1, state.friends.length)), [state.friends.join('|')]);
-  return <section className="reward-extra"><div className="eyebrow">THE SECRET SOCIETY · PRIVATE ASSIGNMENTS</div><p>One chess term for each agent. Copy and distribute messages individually.</p><div className="assignment-list">{(state.friends.length ? state.friends : ['Agent One', 'Agent Two', 'Agent Three']).map((friend, index) => <div key={friend}><span>{friend}</span><b>{assignment[index % assignment.length]}</b><button className="text-button" onClick={() => void navigator.clipboard?.writeText(`${friend}: secretly work “${assignment[index % assignment.length]}” into a conversation, then share a genuine, kind story about the Grandmaster with the bride.`)}>COPY</button></div>)}</div></section>;
+  return <section className="reward-extra"><div className="eyebrow">THE SECRET SOCIETY · PRIVATE ASSIGNMENTS</div><p>One chess term for each agent. These assignments stay the same on every phone.</p><div className="assignment-list">{BROTHERHOOD.map((friend, index) => <div key={friend}><span>{friend}</span><b>{state.bishopAssignments[index] || SECRET_TERMS[index]}</b><button className="text-button" onClick={() => void navigator.clipboard?.writeText(`${friend}: secretly work “${state.bishopAssignments[index] || SECRET_TERMS[index]}” into a conversation, then share a genuine, kind story about ${GROOM} with ${BRIDE}.`)}>COPY</button></div>)}</div></section>;
 }
 
-function ArbiterPanel({ state, onClose, onUpdate, onResolve, onFastTrack, onUndo, onJump, onExport, onImport, say }: {
+function ArbiterPanel({ state, onClose, triggerRef, onUpdate, onResolve, onFastTrack, onUndo, onJump, onExport }: {
   state: GameState; onClose: () => void; onUpdate: (changes: Partial<GameState> | ((current: GameState) => GameState)) => void; onResolve: (result: Resolution) => void;
-  onFastTrack: () => void; onUndo: () => void; onJump: (index: number) => void; onExport: () => void; onImport: (file?: File) => Promise<void>; say: (text: string) => void;
+  triggerRef: RefObject<HTMLButtonElement>; onFastTrack: () => void; onUndo: () => void; onJump: (index: number | null) => void; onExport: () => void;
 }) {
   const currentIndex = Math.min(state.step, 5);
-  return <div className="modal-backdrop" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && onClose()}><section className="arbiter-panel" role="dialog" aria-modal="true" aria-labelledby="arbiter-title">
-    <div className="drawer-head"><div><div className="eyebrow">LOCAL ORGANISER CONTROLS</div><h2 id="arbiter-title">Chief Arbiter</h2></div><button className="icon-button" onClick={onClose} aria-label="Close Chief Arbiter panel"><X /></button></div>
+  const panelRef = useRef<HTMLElement>(null);
+  useEffect(() => {
+    const focusables = () => Array.from(panelRef.current?.querySelectorAll<HTMLElement>('button:not(:disabled), input:not(:disabled), textarea:not(:disabled), select:not(:disabled), a[href]') || []);
+    focusables()[0]?.focus();
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') { event.preventDefault(); onClose(); return; }
+      if (event.key !== 'Tab') return;
+      const items = focusables(); if (!items.length) return;
+      const first = items[0]; const last = items[items.length - 1];
+      if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
+      else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+    };
+    document.addEventListener('keydown', onKeyDown);
+    return () => { document.removeEventListener('keydown', onKeyDown); triggerRef.current?.focus(); };
+  }, [triggerRef]);
+  return <div className="modal-backdrop" role="presentation" onMouseDown={(event) => event.target === event.currentTarget && onClose()}><section ref={panelRef} className="arbiter-panel" role="dialog" aria-modal="true" aria-labelledby="arbiter-title" tabIndex={-1}>
+    <div className="drawer-head"><div><div className="eyebrow">SHARED ORGANISER CONTROLS</div><h2 id="arbiter-title">Chief Arbiter</h2></div><button className="icon-button" onClick={onClose} aria-label="Close Chief Arbiter panel"><X /></button></div>
     <div className="arbiter-rank"><span>CURRENT POSITION</span><b>RANK {state.rank} / 8</b><span>{state.step < 6 ? CHALLENGES[currentIndex].title : 'Promotion'}</span></div>
     {state.step < 6 && <div className="organiser-actions"><button className="secondary-button" onClick={() => { onResolve('completed'); onClose(); }}>COMPLETE CURRENT CHALLENGE</button><button className="quiet-button" onClick={() => { onResolve('skipped'); onClose(); }}>SKIP CURRENT CHALLENGE</button></div>}
-    <div className="arbiter-section"><h3>JUMP TO A CHALLENGE</h3><p>Opening a future challenge records an organiser override.</p><div className="jump-list">{CHALLENGES.map((challenge, index) => <button key={challenge.title} onClick={() => onJump(index)}><span>{String(index + 1).padStart(2, '0')}</span>{challenge.title}<LockKeyhole size={14} /></button>)}</div></div>
-    <div className="arbiter-section"><h3>RECOVERY</h3><div className="button-row"><button className="secondary-button" disabled={!state.undoStack.length} onClick={onUndo}><RotateCcw size={15} /> UNDO LAST PROGRESSION</button><button className="secondary-button" disabled={!state.clock.label} onClick={() => onUpdate({ clock: { ...state.clock, remaining: state.clock.duration, startedAt: null } })}>RESET TIMER</button><button className="secondary-button" disabled={!state.clock.label} onClick={() => { const remaining = remainingSeconds(state.clock); onUpdate({ clock: { ...state.clock, duration: state.clock.duration + 10, remaining: remaining + 10, startedAt: state.clock.startedAt ? Date.now() : null } }); }}>+10 SECONDS</button></div></div>
+    <div className="arbiter-section"><h3>REVISIT AN ENVELOPE</h3><p>The current move, a completed envelope or a deferred envelope can be opened on every phone. Viewing history does not change progress.</p><div className="jump-list">{CHALLENGES.map((challenge, index) => { const available = index === state.step || Boolean(state.statuses[index]); return <button key={challenge.title} disabled={!available} onClick={() => onJump(index)}><span>{String(index + 1).padStart(2, '0')}</span>{challenge.title}{state.statuses[index] === 'deferred' ? <SkipForward size={14} /> : state.statuses[index] ? <Check size={14} /> : <LockKeyhole size={14} />}</button>; })}<button className="return-current" onClick={() => onJump(null)}><ChevronRight size={14} /> RETURN TO CURRENT MOVE</button></div></div>
+    <div className="arbiter-section"><h3>RECOVERY</h3><div className="button-row"><button className="secondary-button" disabled={!state.undoStack.length} onClick={onUndo}><RotateCcw size={15} /> UNDO LAST PROGRESSION</button><button className="secondary-button" disabled={!state.clock.label} onClick={() => onUpdate({ clock: { ...state.clock, remaining: state.clock.duration, startedAt: null } })}>RESET TIMER</button><button className="secondary-button" disabled={!state.clock.label} onClick={() => { const remaining = remainingSeconds(state.clock); onUpdate({ clock: { ...state.clock, duration: state.clock.duration + 10, remaining: remaining + 10, startedAt: state.clock.startedAt ? Date.now() : null } }); }}>+10 SECONDS</button><button className="secondary-button" disabled={!state.rapWords.length} onClick={() => onUpdate({ rapWords: [], rapPrepared: false })}>RESET RAP WORDS</button></div></div>
     <div className="arbiter-section"><h3>RESTORE A POWER CARD</h3><div className="restore-list">{POWER_CARDS.map((card) => <button key={card.id} className="restore-item" disabled={!state.powerUsed.includes(card.id)} onClick={() => onUpdate((s) => restorePower(s, card.id))}><span>{card.mark}</span>{card.name}{state.powerUsed.includes(card.id) ? <Unlock size={15} /> : <Check size={15} />}</button>)}</div></div>
     <div className="arbiter-section"><h3>QUEEN'S VERDICT</h3><p>Pending or deferred verdicts can be entered after progression. This never advances the pawn twice.</p><textarea value={state.queenFeedback} onChange={(e) => onUpdate({ queenFeedback: e.target.value })} placeholder="Feedback from the Queen" /><div className="verdict-row">{VERDICTS.map((verdict) => <button key={verdict} className={`verdict-card ${state.queenVerdict === verdict ? 'chosen' : ''}`} onClick={() => onUpdate({ queenVerdict: verdict })}>{verdict}</button>)}</div></div>
-    <div className="arbiter-section"><h3>EVENT DETAILS</h3><div className="form-grid compact-grid"><label>GROOM<input value={state.groom} onChange={(e) => onUpdate({ groom: e.target.value })} /></label><label>BRIDE<input value={state.bride} onChange={(e) => onUpdate({ bride: e.target.value })} /></label><label>CHIEF ARBITER<input value={state.arbiter} onChange={(e) => onUpdate({ arbiter: e.target.value })} /></label><label>LOCATION<input value={state.city} onChange={(e) => onUpdate({ city: e.target.value })} /></label><label>EVENT DATE<input value={state.eventDate} onChange={(e) => onUpdate({ eventDate: e.target.value })} /></label><label>DINNER LIMIT<input value={state.spendingLimit} onChange={(e) => onUpdate({ spendingLimit: e.target.value })} /></label></div><label className="block-label">FRIENDS · COMMA SEPARATED<textarea value={state.friends.join(', ')} onChange={(e) => onUpdate({ friends: e.target.value.split(',').map((name) => name.trim()).filter(Boolean) })} /></label></div>
+    <div className="arbiter-section"><h3>TONIGHT’S DETAILS</h3><p className="fixed-roster">{GROOM} · {BRIDE} · {BROTHERHOOD.join(' · ')}</p><div className="form-grid compact-grid"><label>CHIEF ARBITER<input value={state.arbiter} onChange={(e) => onUpdate({ arbiter: e.target.value })} placeholder="Optional" /></label><label>DINNER LIMIT<input value={state.spendingLimit} onChange={(e) => onUpdate({ spendingLimit: e.target.value })} placeholder="Agree together" /></label></div></div>
     {state.selectedPiece && <div className="arbiter-section"><h3>OVERRIDE PROMOTION</h3><div className="button-row">{PIECES.map((piece) => <button key={piece.id} className="small-button" onClick={() => onUpdate({ selectedPiece: piece.id, screen: 'reward' })}>{piece.symbol} {piece.id}</button>)}</div></div>}
     <div className="arbiter-section fast-track"><h3>TIME TROUBLE</h3><p>Unresolved challenges are marked deferred, not completed. Deferred envelopes remain available later.</p><button className="primary-button" onClick={onFastTrack}>TIME TROUBLE — FAST-TRACK TO PROMOTION <SkipForward size={16} /></button></div>
-    <div className="arbiter-section"><h3>SAVE & RESTORE</h3><div className="button-row"><button className="secondary-button" onClick={onExport}><Download size={15} /> EXPORT GAME JSON</button><label className="secondary-button file-button"><FileDown size={15} /> IMPORT GAME JSON<input type="file" accept="application/json,.json" onChange={(e) => void onImport(e.target.files?.[0])} /></label></div></div>
+    <div className="arbiter-section"><h3>SHARED GAME BACKUP</h3><p>Download a copy of the current shared state for safekeeping.</p><div className="button-row"><button className="secondary-button" onClick={onExport}><Download size={15} /> EXPORT GAME JSON</button></div></div>
     <div className="arbiter-section"><h3>FUTURE ENVELOPE PREVIEW</h3><div className="preview-list">{CHALLENGES.map((item, index) => <span key={item.title} className={index < state.step ? 'unlocked-preview' : ''}>RANK {item.from} → {item.to} · {item.title}</span>)}</div></div>
-    <div className="arbiter-section"><h3>RESET GAME</h3><button className="danger-button" onClick={() => { if (window.confirm('Erase this game on this device and start over? Export a backup first if needed.')) { localStorage.removeItem(STORAGE_KEY); onUpdate(createGame()); onClose(); say('Game restarted.'); } }}>RESTART THE ENTIRE GAME <RotateCcw size={15} /></button><p className="fine-print">This local PIN-free panel is for convenience, not real authentication. Challenge and reward content is included in the downloaded app files.</p></div>
+    <p className="fine-print">This is the shared room for tonight. The board has one current position for every phone.</p>
   </section></div>;
 }

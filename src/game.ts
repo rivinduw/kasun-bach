@@ -1,4 +1,7 @@
 export const STORAGE_KEY = 'pawns-promotion-save-v1';
+export const GROOM = 'Kasun';
+export const BRIDE = 'Imesha';
+export const BROTHERHOOD = ['Kavindu', 'Rivindu', 'Elijah', 'Dane', 'Sachira'] as const;
 export const POWER_CARDS = [
   { id: 'castling', name: 'Castling', mark: 'O-O', copy: 'Recruit one willing friend to face this challenge alongside you. You still take part, but you do not have to go alone.' },
   { id: 'counterattack', name: 'Counterattack', mark: '!', copy: 'Turn the attack around: ask one friend to answer a difficult question or attempt an equivalent challenge with you.' },
@@ -123,12 +126,13 @@ export type GameState = {
   startedAt: string | null;
   step: number;
   rank: number;
+  viewingStep: number | null;
   statuses: Array<Resolution | null>;
   opened: boolean;
   powerUsed: string[];
-  undoStack: Array<{ step: number; rank: number; statuses: Array<Resolution | null> }>;
+  undoStack: Array<{ step: number; rank: number; statuses: Array<Resolution | null>; screen?: GameState['screen']; selectedPiece?: string; powerUsed?: string[]; clock?: GameState['clock'] }>;
   fastTracked: boolean;
-  sharks: Array<{ name: string; role: string; vote: 'in' | 'out' | null; question: string }>;
+  sharks: Array<{ name: string; role: string; vote: 'in' | 'out' | null; question: string; questionIndex: number }>;
   iqQuestions: number[];
   iqScores: number[];
   iqIndex: number;
@@ -144,15 +148,18 @@ export type GameState = {
   clock: { label: string; duration: number; remaining: number; startedAt: number | null };
   selectedPiece: string;
   rewardNote: string;
+  mission: string;
+  bishopAssignments: string[];
 };
 
 export function createGame(): GameState {
   return {
-    version: 1, screen: 'landing', groom: 'Kasun', bride: 'Imesha', friends: ['Kavindu', 'Rivindu', 'Elijah', 'Dane', 'Sachira'], arbiter: '', city: 'Colombo', eventDate: '26 November 2026', spendingLimit: '',
-    startedAt: null, step: 0, rank: 2, statuses: Array(6).fill(null), opened: false, powerUsed: [], undoStack: [], fastTracked: false,
+    version: 1, screen: 'landing', groom: GROOM, bride: BRIDE, friends: [...BROTHERHOOD], arbiter: '', city: 'Colombo', eventDate: '26 November 2026', spendingLimit: '',
+    startedAt: null, step: 0, rank: 2, viewingStep: null, statuses: Array(6).fill(null), opened: false, powerUsed: [], undoStack: [], fastTracked: false,
     sharks: [], iqQuestions: [], iqScores: [], iqIndex: 0, rapDifficulty: 'Medium', rapWords: [], rapPrepared: false,
     queenConsent: false, queenMessageSent: false, queenRatings: Array(6).fill(0), queenFeedback: '', queenVerdict: '', zugzwangChoice: '',
     clock: { label: '', duration: 0, remaining: 0, startedAt: null }, selectedPiece: '', rewardNote: '',
+    mission: WEDDING_MISSIONS[0], bishopAssignments: ['Zugzwang', 'En Passant', 'Gambit', 'Underpromotion', 'Stalemate'],
   };
 }
 
@@ -168,26 +175,34 @@ export function resolveCurrent(state: GameState, resolution: Resolution, expecte
   const replayingDeferred = state.statuses[state.step] === 'deferred';
   const statuses = [...state.statuses];
   statuses[state.step] = resolution;
-  const undoStack = [...state.undoStack, { step: state.step, rank: state.rank, statuses: [...state.statuses] }];
+  const undoStack = [...state.undoStack, { step: state.step, rank: state.rank, statuses: [...state.statuses], screen: state.screen, selectedPiece: state.selectedPiece, powerUsed: [...state.powerUsed], clock: { ...state.clock } }];
   if (replayingDeferred) {
     const furthestStep = statuses.reduce((furthest, status, index) => status ? Math.max(furthest, index + 1) : furthest, state.step + 1);
     const step = Math.min(6, furthestStep);
-    return { ...state, statuses, undoStack, step, rank: step + 2, screen: step === 6 ? state.selectedPiece ? 'reward' : 'promotion' : 'game', opened: false };
+    return { ...state, statuses, undoStack, step, rank: step + 2, viewingStep: null, screen: step === 6 ? state.selectedPiece ? 'reward' : 'promotion' : 'game', opened: false };
   }
   const step = state.step + 1;
   const rank = Math.min(8, state.rank + 1);
-  return { ...state, statuses, undoStack, step, rank, screen: step === 6 ? 'promotion' : 'game', opened: false, clock: { label: '', duration: 0, remaining: 0, startedAt: null } };
+  return { ...state, statuses, undoStack, step, rank, viewingStep: null, screen: step === 6 ? 'promotion' : 'game', opened: false, clock: { label: '', duration: 0, remaining: 0, startedAt: null } };
+}
+export function resolveEnvelope(state: GameState, index: number, resolution: Resolution): GameState {
+  if (index === state.step) return resolveCurrent(state, resolution, state.step);
+  if (index < 0 || index >= 6 || state.statuses[index] !== 'deferred') return state;
+  const statuses = [...state.statuses];
+  statuses[index] = resolution;
+  const undoStack = [...state.undoStack, { step: state.step, rank: state.rank, statuses: [...state.statuses], screen: state.screen, selectedPiece: state.selectedPiece, powerUsed: [...state.powerUsed], clock: { ...state.clock } }];
+  return { ...state, statuses, undoStack, viewingStep: null, screen: state.selectedPiece ? 'reward' : state.step === 6 ? 'promotion' : 'game', opened: false };
 }
 export function fastTrack(state: GameState): GameState {
   if (state.step === 6 && state.rank === 8) return state;
   const statuses = [...state.statuses];
   for (let i = 0; i < statuses.length; i += 1) if (!statuses[i]) statuses[i] = 'deferred';
-  return { ...state, statuses, undoStack: [...state.undoStack, { step: state.step, rank: state.rank, statuses: [...state.statuses] }], step: 6, rank: 8, screen: 'promotion', opened: false, fastTracked: true };
+  return { ...state, statuses, undoStack: [...state.undoStack, { step: state.step, rank: state.rank, statuses: [...state.statuses], screen: state.screen, selectedPiece: state.selectedPiece, powerUsed: [...state.powerUsed], clock: { ...state.clock } }], step: 6, rank: 8, viewingStep: null, screen: 'promotion', opened: false, fastTracked: true };
 }
 export function undoProgress(state: GameState): GameState {
   const previous = state.undoStack[state.undoStack.length - 1];
   if (!previous) return state;
-  return { ...state, step: previous.step, rank: previous.rank, statuses: [...previous.statuses], undoStack: state.undoStack.slice(0, -1), screen: 'game', opened: false, selectedPiece: '' };
+  return { ...state, step: previous.step, rank: previous.rank, statuses: [...previous.statuses], undoStack: state.undoStack.slice(0, -1), viewingStep: null, screen: previous.screen || (previous.step === 6 ? previous.selectedPiece ? 'reward' : 'promotion' : 'game'), opened: false, selectedPiece: previous.selectedPiece ?? state.selectedPiece, powerUsed: previous.powerUsed ?? state.powerUsed, clock: previous.clock ?? state.clock };
 }
 export function selectPromotion(state: GameState, piece: string): GameState {
   if (state.rank !== 8 || state.selectedPiece || !['Queen', 'Rook', 'Bishop', 'Knight'].includes(piece)) return state;
@@ -213,7 +228,7 @@ export function marriageIqPercent(scores: number[]): number {
 }
 export function scoreIqAnswer(state: GameState, score: number, expectedQuestion = state.iqIndex): GameState {
   if (state.iqIndex !== expectedQuestion || state.iqIndex >= 5 || state.iqScores.length !== expectedQuestion) return state;
-  return { ...state, iqScores: [...state.iqScores, score], iqIndex: state.iqIndex + 1 };
+  return { ...state, iqScores: [...state.iqScores, score], iqIndex: state.iqIndex + 1, clock: { label: '', duration: 0, remaining: 0, startedAt: null } };
 }
 export function voteResult(votes: Array<'in' | 'out' | null>): 'deal' | 'no-deal' | 'tie' | 'pending' {
   const cast = votes.filter((vote): vote is 'in' | 'out' => vote !== null);
@@ -227,7 +242,9 @@ export function parseGame(raw: string): GameState {
   const parsed = JSON.parse(raw) as Partial<GameState>;
   if (parsed.version !== 1 || !Array.isArray(parsed.statuses) || parsed.statuses.length !== 6 || typeof parsed.step !== 'number' || parsed.step < 0 || parsed.step > 6 || typeof parsed.rank !== 'number' || parsed.rank < 2 || parsed.rank > 8 || parsed.rank !== parsed.step + 2 || !Array.isArray(parsed.powerUsed) || (['promotion', 'reward'].includes(String(parsed.screen)) && parsed.rank !== 8)) throw new Error('This save file is invalid or uses an unsupported version.');
   const base = createGame();
-  return { ...base, ...parsed, statuses: parsed.statuses as GameState['statuses'] } as GameState;
+  const sharks = Array.isArray(parsed.sharks) ? parsed.sharks.map((shark) => ({ ...shark, questionIndex: Number.isInteger(shark.questionIndex) ? shark.questionIndex : 0 })) : base.sharks;
+  const viewingStep = Number.isInteger(parsed.viewingStep) && Number(parsed.viewingStep) >= 0 && Number(parsed.viewingStep) < 6 ? Number(parsed.viewingStep) : null;
+  return { ...base, ...parsed, viewingStep, sharks, statuses: parsed.statuses as GameState['statuses'] } as GameState;
 }
 export function remainingSeconds(clock: GameState['clock'], now = Date.now()): number {
   if (!clock.startedAt) return clock.remaining;

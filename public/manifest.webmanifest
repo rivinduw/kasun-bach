@@ -4,7 +4,7 @@
   "description": "Six moves. Four powers. One promotion.",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#17191c",
-  "theme_color": "#17191c",
+  "background_color": "#14201b",
+  "theme_color": "#14201b",
   "icons": [{ "src": "/pawn.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }]
 }
