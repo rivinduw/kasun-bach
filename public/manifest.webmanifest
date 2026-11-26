@@ -1,0 +1,10 @@
+{
+  "name": "The Pawn's Promotion",
+  "short_name": "Pawn's Promotion",
+  "description": "Six moves. Four powers. One promotion.",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#17191c",
+  "theme_color": "#17191c",
+  "icons": [{ "src": "/pawn.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }]
+}

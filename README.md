@@ -1,64 +1,57 @@
-# Astro Starter Kit: Blog
+# The Pawn's Promotion
 
-[![Deploy to Cloudflare](https://deploy.workers.cloudflare.com/button)](https://deploy.workers.cloudflare.com/?url=https://github.com/cloudflare/templates/tree/main/astro-blog-starter-template)
+A mobile-first, chess-themed bachelor-party game for the final night of bachelorhood. Built with React, TypeScript and Vite; it runs as a static Cloudflare Pages site and keeps names and progress in this browser's local storage.
 
-![Astro Template Preview](https://github.com/withastro/astro/assets/2244813/ff10799f-a816-4703-b967-c78997e8323d)
+## Run locally
 
-<!-- dash-content-start -->
-
-Create a blog with Astro and deploy it on Cloudflare Workers as a [static website](https://developers.cloudflare.com/workers/static-assets/).
-
-Features:
-
-- ✅ Minimal styling (make it your own!)
-- ✅ 100/100 Lighthouse performance
-- ✅ SEO-friendly with canonical URLs and OpenGraph data
-- ✅ Sitemap support
-- ✅ RSS Feed support
-- ✅ Markdown & MDX support
-- ✅ Built-in Observability logging
-
-<!-- dash-content-end -->
-
-## Getting Started
-
-Outside of this repo, you can start a new project with this template using [C3](https://developers.cloudflare.com/pages/get-started/c3/) (the `create-cloudflare` CLI):
-
-```bash
-npm create cloudflare@latest -- --template=cloudflare/templates/astro-blog-starter-template
+```sh
+npm install
+npm run dev
 ```
 
-A live public deployment of this template is available at [https://astro-blog-starter-template.templates.workers.dev](https://astro-blog-starter-template.templates.workers.dev)
+Build and preview the production site:
 
-## 🚀 Project Structure
+```sh
+npm run build
+npm run preview
+```
 
-Astro looks for `.astro` or `.md` files in the `src/pages/` directory. Each page is exposed as a route based on its file name.
+Run the game-logic test suite:
 
-There's nothing special about `src/components/`, but that's where we like to put any Astro/React/Vue/Svelte/Preact components.
+```sh
+npm test
+```
 
-The `src/content/` directory contains "collections" of related Markdown and MDX documents. Use `getCollection()` to retrieve posts from `src/content/blog/`, and type-check your frontmatter using an optional schema. See [Astro's Content Collections docs](https://docs.astro.build/en/guides/content-collections/) to learn more.
+## Deploy to Cloudflare Pages
 
-Any static assets, like images, can be placed in the `public/` directory.
+Cloudflare Pages' React/Vite build settings are `npm run build` and `dist`. For Git integration, push this folder to a repository, create a Pages project connected to it, set production branch to `main`, build command to `npm run build`, and build output directory to `dist`.
 
-## 🧞 Commands
+For Direct Upload with Wrangler, authenticate once and create the Pages project if it does not already exist:
 
-All commands are run from the root of the project, from a terminal:
+```sh
+npx wrangler login
+npx wrangler pages project create pawns-promotion
+npm run deploy
+```
 
-| Command                           | Action                                           |
-| :-------------------------------- | :----------------------------------------------- |
-| `npm install`                     | Installs dependencies                            |
-| `npm run dev`                     | Starts local dev server at `localhost:4321`      |
-| `npm run build`                   | Build your production site to `./dist/`          |
-| `npm run preview`                 | Preview your build locally, before deploying     |
-| `npm run astro ...`               | Run CLI commands like `astro add`, `astro check` |
-| `npm run astro -- --help`         | Get help using the Astro CLI                     |
-| `npm run build && npm run deploy` | Deploy your production site to Cloudflare        |
-| `npm wrangler tail`               | View real-time logs for all Workers              |
+The project-creation command asks for a production branch; use `main`. Once the project exists, `npm run deploy` builds the app and uploads `dist` to the `pawns-promotion` Pages project. Cloudflare will provide the project's `*.pages.dev` URL. Direct Upload and Git integration are alternative project modes; choose the intended mode when creating the Pages project.
 
-## 👀 Want to learn more?
+## Game flow
 
-Check out [our documentation](https://docs.astro.build) or jump into our [Discord server](https://astro.build/chat).
+The groom starts on rank 2, receives four one-use power cards, opens six challenge envelopes, and may promote to a Queen, Rook, Bishop or Knight at rank 8. The Chief Arbiter panel supports challenge overrides, deferred/skip records, restoration of cards, fast-track promotion, state export/import, and game reset. Marriage IQ, Shark Tank votes, rap words, timers, Queen's Verdict, voucher and certificate all run without a server.
 
-## Credit
+The game is configured in `src/game.ts` and the challenge-specific presentation is in `src/App.tsx`. The event city, date, names and optional dinner limit can also be edited at setup or in the Arbiter panel.
 
-This theme is based off of the lovely [Bear Blog](https://github.com/HermanMartinus/bearblog/).
+## Privacy and offline use
+
+Scores, ratings, votes and game progress are stored only in local storage on the current device. The requested first names are prefilled in the public app source and can be edited in setup; remove or replace them before sharing the repository more widely. No analytics or external services are used by the game. Recordings are not uploaded or stored here. Camera/file access happens only when the organiser taps the camera button; WhatsApp opens only after an explicit tap and consent checkbox.
+
+The service worker caches the app shell and same-origin app assets as they are visited, with network-first updates and a cached fallback when the connection drops. Open the site once while online before taking it out for the evening. Local storage is not encrypted; the organiser panel is a convenience, not authentication. Challenge and reward content is included in the public static app files.
+
+## Practical notes
+
+- Use one primary phone for the group. Progress does not sync across devices.
+- Any challenge can be modified, skipped or declined without pressure.
+- The bride's advertisement is never sent automatically. Sharing requires the groom's consent.
+- Reward privileges are celebratory agreements, not legal obligations. Keep all requests reasonable and within mutually agreed limits.
+- A downloaded voucher/certificate is SVG, so it stays sharp when zoomed or printed. The Print action is also available.
